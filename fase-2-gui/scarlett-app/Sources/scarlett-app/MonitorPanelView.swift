@@ -4,57 +4,53 @@ struct MonitorPanelView: View {
     @EnvironmentObject var vm: ScarlettViewModel
 
     var body: some View {
-        VStack(spacing: 2) {
-            SectionTitle(text: "MONITOR")
+        VStack(spacing: 6) {
+            SectionTitle(text: "MONITOR CONTROL")
 
             ZStack {
                 Circle()
-                    .stroke(Color.gray.opacity(0.25), lineWidth: 3)
-                    .frame(width: 44, height: 44)
+                    .stroke(Color(red: 0.10, green: 0.11, blue: 0.13), lineWidth: 3.5)
+                    .frame(width: 42, height: 42)
+
                 Circle()
-                    .trim(from: 0, to: 0.7)
-                    .stroke(ScarlettUI.accent, lineWidth: 3)
-                    .frame(width: 44, height: 44)
+                    .trim(from: 0, to: CGFloat(vm.state.masterVolume + 128) / 128.0 * 0.75)
+                    .stroke(ScarlettUI.scarlettRed, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .frame(width: 42, height: 42)
                     .rotationEffect(.degrees(135))
-                Circle()
-                    .fill(Color.primary.opacity(0.05))
-                    .frame(width: 20, height: 20)
-                Text("VOL").font(ScarlettUI.title(7, .bold))
+
+                VStack(spacing: 1) {
+                    Text("MON")
+                        .font(.system(size: 7, weight: .black))
+                        .foregroundStyle(ScarlettUI.textMuted)
+                    Text(ScarlettViewModel.volumeDBString(vm.state.masterVolume))
+                        .font(ScarlettUI.mono(8, .bold))
+                        .foregroundStyle(ScarlettUI.textPrimary)
+                }
+            }
+            .padding(.vertical, 2)
+
+            HStack(spacing: 4) {
+                ToggleButton(label: "Dim", isOn: vm.state.dim, onColor: .orange, offColor: ScarlettUI.textMuted, minWidth: 40, height: 18) {
+                    vm.toggleDim()
+                }
+                ToggleButton(label: "0dB", isOn: vm.state.masterVolume == 0, onColor: ScarlettUI.amber, offColor: ScarlettUI.textMuted, minWidth: 40, height: 18) {
+                    vm.setVolume(0)
+                }
             }
 
-            HStack(spacing: 3) {
-                monButton("Dim", .orange)
-                monButton("0dB", .gray)
-            }
-
-            HStack(spacing: 3) {
-                monButton("Mute", .red)
-                monButton("L", .gray)
-                monButton("R", .gray)
+            HStack(spacing: 4) {
+                ToggleButton(label: "Mute", isOn: vm.state.masterMute, onColor: ScarlettUI.scarlettRed, offColor: ScarlettUI.textMuted, minWidth: 36, height: 18) {
+                    vm.setMute(!vm.state.masterMute)
+                }
+                ToggleButton(label: "L", isOn: vm.monitorSoloLeft, onColor: .cyan, offColor: ScarlettUI.textMuted, minWidth: 20, height: 18) {
+                    vm.monitorSoloLeft.toggle()
+                }
+                ToggleButton(label: "R", isOn: vm.monitorSoloRight, onColor: .cyan, offColor: ScarlettUI.textMuted, minWidth: 20, height: 18) {
+                    vm.monitorSoloRight.toggle()
+                }
             }
         }
-    }
-
-    private func monButton(_ label: String, _ tint: Color) -> some View {
-        Button(label) {
-            switch label {
-            case "Mute": vm.setMute(!vm.state.masterMute)
-            case "Dim": vm.toggleDim()
-            case "0dB": vm.setVolume(0)
-            case "L": vm.monitorSoloLeft.toggle()
-            case "R": vm.monitorSoloRight.toggle()
-            default: break
-            }
-        }
-        .font(ScarlettUI.title(10, .semibold))
-        .buttonStyle(.bordered)
-        .tint(
-            label == "Mute" && vm.state.masterMute ? .red :
-            label == "Dim" && vm.state.dim ? .orange :
-            label == "L" && vm.monitorSoloLeft ? .cyan :
-            label == "R" && vm.monitorSoloRight ? .cyan :
-            tint
-        )
-        .controlSize(.mini)
+        .padding(10)
+        .cardStyle(radius: 6)
     }
 }

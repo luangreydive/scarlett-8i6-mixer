@@ -13,3 +13,4 @@ mixer_scarlett.h
 # macOS noise
 .DS_Store
 *.log
+*.zip

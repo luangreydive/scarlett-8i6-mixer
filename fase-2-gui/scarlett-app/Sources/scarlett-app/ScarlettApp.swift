@@ -51,6 +51,7 @@ struct ScarlettApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(vm)
+                .preferredColorScheme(.dark)
                 .task { await vm.connect() }
                 .onDisappear { vm.disconnect() }
                 .frame(minWidth: 800, minHeight: 500)

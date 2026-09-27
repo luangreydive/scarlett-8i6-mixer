@@ -19,9 +19,59 @@ static scarlett_device_t *g_dev = NULL;
 static pthread_mutex_t    g_dev_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile int       g_usb_failures = 0;
 
-static void handle_signal(int sig) { (void)sig; keep_running = 0; }
+static int g_output_mux_cache[6] = { 18, 19, 18, 19, 16, 17 };
+static int g_capture_mux_cache[6] = { 12, 13, 14, 15, 16, 17 };
+static int g_matrix_gain_cache[144];
+
+static void handle_signal(int sig) { (void)sig; keep_running = 0; socket_server_stop(); }
+static int usb_write_cur(uint16_t wVal, uint16_t wIdx, void *data, uint16_t len);
 
 /* ---- Device lifecycle (watchdog-managed) ---- */
+
+static void enforce_safe_hardware_routing(void)
+{
+	/* 1. Feedback Protection: Lock capture mux strictly to physical hardware inputs (12..17) */
+	for (int i = 0; i < 6; i++) {
+		g_capture_mux_cache[i] = 12 + i;
+		uint8_t d[2] = { (uint8_t)(12 + i), 0 };
+		usb_write_cur(0x0000 | i, 0x3400, d, 2);
+	}
+
+	/* 2. Output routing: Mon L/R and HP 1/2 listen to Mix 1 (18, 19); SPDIF to SPDIF (16, 17) */
+	int out_mux[6] = { 18, 19, 18, 19, 16, 17 };
+	for (int i = 0; i < 6; i++) {
+		g_output_mux_cache[i] = out_mux[i];
+		uint8_t d[2] = { (uint8_t)out_mux[i], 0 };
+		usb_write_cur(0x0000 | i, 0x3300, d, 2);
+	}
+
+	/* 3. Matrix input mux: 0..3=Analog 1..4 (12..15), 4..5=SPDIF (16..17), 6..7=DAW 1..2 (0..1) */
+	int mat_mux[8] = { 12, 13, 14, 15, 16, 17, 0, 1 };
+	for (int i = 0; i < 8; i++) {
+		uint8_t d[2] = { (uint8_t)mat_mux[i], 0 };
+		usb_write_cur(0x0600 | i, 0x3200, d, 2);
+	}
+
+	/* 4. Matrix gains: mute all by default (-128 dB) except Guitar (In 0) & DAW (In 6, 7) at -12 dB */
+	for (int i = 0; i < 144; i++) {
+		g_matrix_gain_cache[i] = -128;
+	}
+	// Node 0: Guitar (In 0) -> Mix 1 L (Mix 0)
+	g_matrix_gain_cache[0] = -12;
+	// Node 1: Guitar (In 0) -> Mix 1 R (Mix 1)
+	g_matrix_gain_cache[1] = -12;
+	// Node 48: DAW 1 (In 6) -> Mix 1 L (Mix 0)
+	g_matrix_gain_cache[48] = -12;
+	// Node 57: DAW 2 (In 7) -> Mix 1 R (Mix 1)
+	g_matrix_gain_cache[57] = -12;
+
+	for (int i = 0; i < 144; i++) {
+		int dB = g_matrix_gain_cache[i];
+		int16_t v = (int16_t)(dB * 256);
+		uint8_t d[2] = { (uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff) };
+		usb_write_cur(0x0000 | i, 0x3c00, d, 2);
+	}
+}
 
 static void device_try_open(void)
 {
@@ -29,6 +79,7 @@ static void device_try_open(void)
 	g_dev = scarlett_usb_open(SCARLETT_VID, SCARLETT_PID);
 	if (g_dev) {
 		printf("scarlett-daemon: device opened (watchdog)\n");
+		enforce_safe_hardware_routing();
 		if (scarlett_usb_start_interrupt(g_dev, NULL) != 0)
 			printf("scarlett-daemon: interrupt monitoring unavailable\n");
 		g_usb_failures = 0;
@@ -213,13 +264,34 @@ static int cmd_set_rate(char *r, size_t rs, uint32_t rate)
 
 static int cmd_get_meters(char *r, size_t rs)
 {
-	uint8_t d[36] = {0};
-	if (usb_read_mem(0x0000, 0x3c00, d, sizeof(d))) goto e;
+	uint8_t d_in[12] = {0};
+	uint8_t d_daw[12] = {0};
+	uint8_t d_mix[12] = {0};
+
+	/* Read physical inputs (0x0000), DAW playback (0x0003), and Mix outputs (0x0001) */
+	if (usb_read_mem(0x0000, 0x3c00, d_in, sizeof(d_in))) goto e;
+	usb_read_mem(0x0003, 0x3c00, d_daw, sizeof(d_daw));
+	usb_read_mem(0x0001, 0x3c00, d_mix, sizeof(d_mix));
+
 	char buf[256]; int pos = 0;
 	pos += snprintf(buf + pos, sizeof(buf) - pos, "OK");
-	for (int i = 0; i < 18 && pos < (int)sizeof(buf) - 8; i++)
+
+	/* 0..5: Physical inputs (4 Analog + 2 S/PDIF) */
+	for (int i = 0; i < 6; i++) {
 		pos += snprintf(buf + pos, sizeof(buf) - pos, " %d",
-			(int)d[i*2] | ((int)d[i*2+1] << 8));
+			(int)d_in[i*2] | ((int)d_in[i*2+1] << 8));
+	}
+	/* 6..7: DAW 1 & 2 playback (Spotify / Mac Audio) */
+	for (int i = 0; i < 2; i++) {
+		pos += snprintf(buf + pos, sizeof(buf) - pos, " %d",
+			(int)d_daw[i*2] | ((int)d_daw[i*2+1] << 8));
+	}
+	/* 8..9: Master Mix 1 L & R */
+	for (int i = 0; i < 2; i++) {
+		pos += snprintf(buf + pos, sizeof(buf) - pos, " %d",
+			(int)d_mix[i*2] | ((int)d_mix[i*2+1] << 8));
+	}
+
 	snprintf(r, rs, "%s", buf);
 	return 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
@@ -234,27 +306,26 @@ static int cmd_get_matrix_mux(char *r, size_t rs, int ch)
 
 static int cmd_get_output_mux(char *r, size_t rs, int bus)
 {
-	uint8_t d[2] = {0};
-	if (usb_read_cur(0x0000 | bus, 0x3300, d, 2)) goto e;
-	snprintf(r, rs, "OK src=%d", (int)d[0]);
-	return 0; e: snprintf(r, rs, "ERR ctl"); return -1;
+	if (bus >= 0 && bus < 6) {
+		return snprintf(r, rs, "OK src=%d", g_output_mux_cache[bus]), 0;
+	}
+	snprintf(r, rs, "ERR bus: 0..5"); return -1;
 }
 
 static int cmd_get_capture_mux(char *r, size_t rs, int ch)
 {
-	uint8_t d[2] = {0};
-	if (usb_read_cur(0x0000 | ch, 0x3400, d, 2)) goto e;
-	snprintf(r, rs, "OK src=%d", (int)d[0]);
-	return 0; e: snprintf(r, rs, "ERR ctl"); return -1;
+	if (ch >= 0 && ch < 6) {
+		return snprintf(r, rs, "OK src=%d", g_capture_mux_cache[ch]), 0;
+	}
+	snprintf(r, rs, "ERR ch: 0..5"); return -1;
 }
 
 static int cmd_get_matrix_gain(char *r, size_t rs, int node)
 {
-	uint8_t d[2] = {0};
-	if (usb_read_cur(0x0000 | node, 0x3c00, d, 2)) goto e;
-	int dB = (int)d[0] - 128;
-	snprintf(r, rs, "OK %d dB", dB);
-	return 0; e: snprintf(r, rs, "ERR ctl"); return -1;
+	if (node >= 0 && node < 144) {
+		return snprintf(r, rs, "OK %d dB", g_matrix_gain_cache[node]), 0;
+	}
+	snprintf(r, rs, "ERR node: 0..143"); return -1;
 }
 
 /* ---- SET commands (whitelist) ---- */
@@ -310,6 +381,10 @@ static int cmd_set_mute(char *r, size_t rs, int bus, const char *val)
 
 static int cmd_set_matrix_mux(char *r, size_t rs, int ch, int src)
 {
+	/* Feedback Protection: Never allow matrix mux to route a mix output back into matrix inputs. */
+	if (src >= 18 && src <= 23) {
+		return snprintf(r, rs, "ERR feedback-protection: matrix loopback blocked for src=%d", src), -1;
+	}
 	uint8_t d[2] = {0};
 	d[0] = (uint8_t)src;
 	if (usb_write_cur(0x0600 | ch, 0x3200, d, 2)) goto e;
@@ -318,26 +393,35 @@ static int cmd_set_matrix_mux(char *r, size_t rs, int ch, int src)
 
 static int cmd_set_output_mux(char *r, size_t rs, int bus, int src)
 {
-	uint8_t d[2] = {0};
-	d[0] = (uint8_t)src;
+	if (bus < 0 || bus >= 6) return snprintf(r, rs, "ERR bus: 0..5"), -1;
+	uint8_t d[2] = { (uint8_t)src, 0 };
 	if (usb_write_cur(0x0000 | bus, 0x3300, d, 2)) goto e;
+	g_output_mux_cache[bus] = src;
 	return snprintf(r, rs, "OK src=%d", src), 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
 
 static int cmd_set_capture_mux(char *r, size_t rs, int ch, int src)
 {
-	uint8_t d[2] = {0};
-	d[0] = (uint8_t)src;
+	/* Feedback Protection: Never allow capture to route DAW/PCM or Mix outputs back into Mac inputs.
+	 * This prevents infinite digital feedback loops with DAWs like GarageBand. */
+	if (src < 12 || src > 17) {
+		return snprintf(r, rs, "ERR feedback-protection: capture must be hardware input (12-17), blocked src=%d", src), -1;
+	}
+	if (ch < 0 || ch >= 6) return snprintf(r, rs, "ERR ch: 0..5"), -1;
+	uint8_t d[2] = { (uint8_t)src, 0 };
 	if (usb_write_cur(0x0000 | ch, 0x3400, d, 2)) goto e;
+	g_capture_mux_cache[ch] = src;
 	return snprintf(r, rs, "OK src=%d", src), 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
 
 static int cmd_set_matrix_gain(char *r, size_t rs, int node, int dB)
 {
-	if (dB < -128 || dB > 0) return snprintf(r, rs, "ERR dB: -128..0"), -1;
-	uint8_t d[2] = {0};
-	d[0] = (uint8_t)(dB + 128);
+	if (node < 0 || node >= 144) return snprintf(r, rs, "ERR node: 0..143"), -1;
+	if (dB < -128 || dB > 6) return snprintf(r, rs, "ERR dB: -128..6"), -1;
+	int16_t v = (int16_t)(dB * 256);
+	uint8_t d[2] = { (uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff) };
 	if (usb_write_cur(0x0000 | node, 0x3c00, d, 2)) goto e;
+	g_matrix_gain_cache[node] = dB;
 	return snprintf(r, rs, "OK %d dB", dB), 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
 
@@ -363,7 +447,7 @@ static void scarlett_response(const char *cmd, char *r, size_t rs)
 		else if (strncmp(a, "matrix:", 7) == 0) {
 			int mi = atoi(a+7);
 			char *dot = strchr(a+7, '.');
-			if (dot) cmd_get_matrix_gain(r, rs, mi * 8 | (atoi(dot+1) & 7));
+			if (dot) cmd_get_matrix_gain(r, rs, (atoi(dot+1) << 3) | (mi & 7));
 			else     cmd_get_matrix_mux(r, rs, mi);
 		}
 		else if (strncmp(a, "output:", 7) == 0)    cmd_get_output_mux(r, rs, atoi(a+7));
@@ -391,7 +475,7 @@ static void scarlett_response(const char *cmd, char *r, size_t rs)
 		else if (strncmp(key, "matrix:", 7) == 0) {
 			int mi = atoi(key+7);
 			char *dot = strchr(key+7, '.');
-			if (dot) cmd_set_matrix_gain(r, rs, mi * 8 | (atoi(dot+1) & 7), atoi(val));
+			if (dot) cmd_set_matrix_gain(r, rs, (atoi(dot+1) << 3) | (mi & 7), atoi(val));
 			else     cmd_set_matrix_mux(r, rs, mi, atoi(val));
 		}
 		else if (strncmp(key, "output:", 7) == 0)     cmd_set_output_mux(r, rs, atoi(key+7), atoi(val));
@@ -430,6 +514,34 @@ static void scarlett_response(const char *cmd, char *r, size_t rs)
 			if (!usb_read_cur(0x0800|ch, 0x0100, d, 2))
 				pos += snprintf(buf+pos, sizeof(buf)-pos, " gain%d=%s", ch, str_lo_hi(d[0]));
 		snprintf(r, rs, "%s", buf);
+		return;
+	}
+
+	if (strncmp(cmd, "RAW_REQ ", 8) == 0) {
+		unsigned int bmReq = 0, bReq = 0, wVal = 0, wIdx = 0, len = 0;
+		char hexdata[128] = {0};
+		int n = sscanf(cmd + 8, "%x %x %x %x %u %127s", &bmReq, &bReq, &wVal, &wIdx, &len, hexdata);
+		if (n < 5) { snprintf(r, rs, "ERR usage: RAW_REQ bmReq bReq wVal wIdx len [hexdata]"); return; }
+		uint8_t d[64] = {0};
+		if (!(bmReq & 0x80) && hexdata[0]) {
+			for (unsigned int i = 0; i < len && i < 32; i++) {
+				unsigned int byte = 0;
+				if (sscanf(hexdata + i*2, "%02x", &byte) == 1) d[i] = (uint8_t)byte;
+			}
+		}
+		scarlett_usb_control_request_t req = {
+			.bmRequestType = (uint8_t)bmReq,
+			.bRequest      = (uint8_t)bReq,
+			.wValue        = (uint16_t)wVal,
+			.wIndex        = (uint16_t)wIdx,
+			.wLength       = (uint16_t)len,
+			.data          = d,
+		};
+		int ret = scarlett_usb_control_transfer(g_dev, &req);
+		if (ret) { snprintf(r, rs, "ERR ret=%d", ret); return; }
+		char buf[128] = {0}; int pos = 0;
+		for (unsigned int i = 0; i < len; i++) pos += snprintf(buf+pos, sizeof(buf)-pos, "%02x ", d[i]);
+		snprintf(r, rs, "OK %s", buf);
 		return;
 	}
 
@@ -472,8 +584,12 @@ int main(void)
 
 	/* Best-effort open; the watchdog keeps retrying / resetting. */
 	g_dev = scarlett_usb_open(SCARLETT_VID, SCARLETT_PID);
-	if (g_dev) printf("scarlett-daemon: device opened\n");
-	else printf("scarlett-daemon: device not found — watchdog will retry\n");
+	if (g_dev) {
+		printf("scarlett-daemon: device opened\n");
+		enforce_safe_hardware_routing();
+	} else {
+		printf("scarlett-daemon: device not found — watchdog will retry\n");
+	}
 
 	pthread_create(&wd, NULL, watchdog_main, NULL);
 

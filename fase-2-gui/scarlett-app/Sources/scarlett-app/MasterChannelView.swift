@@ -5,22 +5,35 @@ struct MasterChannelView: View {
     var onCopyMix: () -> Void
 
     var body: some View {
-        VStack(spacing: 3) {
-            Text("Master")
-                .font(ScarlettUI.title(12))
-                .foregroundStyle(ScarlettUI.labelOnStrip)
-                .padding(.bottom, 4)
+        VStack(spacing: 6) {
+            VStack(spacing: 2) {
+                Text("MASTER")
+                    .font(ScarlettUI.title(11, .bold))
+                    .foregroundStyle(ScarlettUI.scarlettRed)
+                    .tracking(1.0)
+                Rectangle()
+                    .fill(ScarlettUI.scarlettRed.opacity(0.8))
+                    .frame(width: 24, height: 2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 2)
 
             Color.clear.frame(height: 42)
 
             HStack(spacing: 3) {
                 HStack(spacing: 2) {
-                    MeterBar(level: masterMeterLeft, color: .orange, hold: vm.meterHoldLevel(vm.meters.count >= 2 ? vm.meters.count - 2 : 0)) {
-                    vm.resetMeterHold(vm.meters.count >= 2 ? vm.meters.count - 2 : 0)
-                }
-                    MeterBar(level: masterMeterRight, color: .orange, hold: vm.meterHoldLevel(vm.meters.count > 0 ? vm.meters.count - 1 : 0)) {
-                        vm.resetMeterHold(vm.meters.count > 0 ? vm.meters.count - 1 : 0)
-                    }
+                    MeterBar(
+                        level: masterMeterLeft,
+                        hold: vm.meterHoldLevel(vm.meters.count >= 2 ? vm.meters.count - 2 : 0),
+                        onResetHold: { vm.resetMeterHold(vm.meters.count >= 2 ? vm.meters.count - 2 : 0) },
+                        width: 5
+                    )
+                    MeterBar(
+                        level: masterMeterRight,
+                        hold: vm.meterHoldLevel(vm.meters.count > 0 ? vm.meters.count - 1 : 0),
+                        onResetHold: { vm.resetMeterHold(vm.meters.count > 0 ? vm.meters.count - 1 : 0) },
+                        width: 5
+                    )
                 }
                 .frame(height: 160)
 
@@ -29,37 +42,59 @@ struct MasterChannelView: View {
                 }) {
                     vm.setVolume(0)
                 }
-                .frame(width: 34, height: 160)
+                .frame(width: 32, height: 160)
             }
 
             Text(ScarlettViewModel.volumeDBString(vm.state.masterVolume))
-                .font(ScarlettUI.mono(11))
-                .foregroundStyle(ScarlettUI.labelOnStrip)
+                .font(ScarlettUI.mono(10, .semibold))
+                .foregroundStyle(ScarlettUI.textPrimary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(red: 0.08, green: 0.09, blue: 0.11))
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.white.opacity(0.06), lineWidth: 0.5))
+                )
 
-            Toggle(isOn: Binding(
-                get: { vm.state.masterMute },
-                set: { vm.setMute($0) }
-            )) { Text("M").font(ScarlettUI.title(9, .bold)) }
-            .toggleStyle(.button)
-            .tint(vm.state.masterMute ? .red : ScarlettUI.labelOnStrip)
-            .controlSize(.mini)
+            ToggleButton(
+                label: "MUTE",
+                isOn: vm.state.masterMute,
+                onColor: ScarlettUI.scarlettRed,
+                offColor: ScarlettUI.textMuted,
+                font: .system(size: 9, weight: .bold),
+                controlSize: .mini,
+                minWidth: 44,
+                height: 18
+            ) {
+                vm.setMute(!vm.state.masterMute)
+            }
 
-            Button("Copy Mix To...") { onCopyMix() }
-                .font(ScarlettUI.title(10))
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-                .frame(height: 20)
+            Button("Copy Mix…") { onCopyMix() }
+                .font(ScarlettUI.title(9, .medium))
+                .foregroundStyle(ScarlettUI.textSecondary)
+                .padding(.horizontal, 4)
+                .frame(height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                )
+                .buttonStyle(.plain)
 
-            Text("Master")
-                .font(ScarlettUI.title(10))
-                .foregroundStyle(ScarlettUI.labelOnStrip)
+            Text("MONITOR")
+                .font(ScarlettUI.title(9, .semibold))
+                .foregroundStyle(ScarlettUI.textMuted)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(ScarlettUI.stripFill)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(ScarlettUI.accent.opacity(0.65), lineWidth: 1.5))
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(red: 0.13, green: 0.14, blue: 0.17))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ScarlettUI.scarlettRed.opacity(0.7), lineWidth: 1.2)
+                )
+                .shadow(color: ScarlettUI.scarlettRed.opacity(0.2), radius: 4, x: 0, y: 1)
         )
     }
 

@@ -19,7 +19,7 @@ struct ScarlettState {
     var dim: Bool = false
     var mono: Bool = false
 
-    var inputs: [InputChannel] = (0..<4).map { InputChannel(index: $0) }
+    var inputs: [InputChannel] = (0..<8).map { InputChannel(index: $0) }
     var outputs: [OutputChannel] = (0..<6).map { OutputChannel(index: $0) }
 
     struct InputChannel {
@@ -118,6 +118,10 @@ final class ScarlettViewModel: ObservableObject {
             lastError = nil
             await refresh()
             await refreshRouting()
+            if routing.outputMux.count >= 2 && routing.outputMux[0] != 18 {
+                applyRoutingPreset("mix1")
+            }
+            syncAllChannelsToHardware()
             startPolling()
         } catch {
             lastError = "\(error)"
@@ -154,6 +158,7 @@ final class ScarlettViewModel: ObservableObject {
                     lastError = nil
                     await refresh()
                     await refreshRouting()
+                    syncAllChannelsToHardware()
                     startPolling()
                     break
                 } catch {
@@ -267,29 +272,80 @@ final class ScarlettViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Routing presets
+    // MARK: - Monitoring Mode & Routing presets
+
+    var monitoringMode: String {
+        guard routing.outputMux.count >= 2 else { return "custom" }
+        let out0 = routing.outputMux[0]
+        let out1 = routing.outputMux[1]
+        if out0 == 0 && out1 == 1 { return "daw" }
+        if out0 == 12 && out1 == 12 { return "direct" }
+        if out0 == 18 && out1 == 19 { return "mix" }
+        return "custom"
+    }
+
+    func setMonitoringMode(_ mode: String) {
+        switch mode {
+        case "daw": applyRoutingPreset("daw")
+        case "direct": applyRoutingPreset("direct")
+        case "mix": applyRoutingPreset("mix1")
+        default: break
+        }
+    }
 
     func applyRoutingPreset(_ preset: String) {
         guard isConnected else { return }
         Task { @MainActor in
+            // Feedback Protection: Always lock capture to physical hardware inputs (12..17)
+            for i in 0..<4 { _ = try? await asyncSet("capture:\(i)", "\(12 + i)") }
+            _ = try? await asyncSet("capture:4", "16")
+            _ = try? await asyncSet("capture:5", "17")
+
             switch preset {
-            case "default":
-                for i in 0..<6 { _ = try? await asyncSet("output:\(i)", "\(i / 2)") }
-                for i in 0..<8 { _ = try? await asyncSet("matrix:\(i)", "0") }
-                for i in 0..<4 { _ = try? await asyncSet("capture:\(i)", "\(i)") }
+            case "daw":
+                // Route outputs 0-3 (Mon L/R, HP 1 L/R, HP 2 L/R) to DAW 1-2 (PCM 1 & 2)
+                for bus in [0, 2] { _ = try? await asyncSet("output:\(bus)", "0") }
+                for bus in [1, 3] { _ = try? await asyncSet("output:\(bus)", "1") }
+                _ = try? await asyncSet("output:4", "16")
+                _ = try? await asyncSet("output:5", "17")
+                routingPreset = "DAW / GarageBand"
+
             case "direct":
-                for i in 0..<6 { _ = try? await asyncSet("output:\(i)", "0") }
-                for i in 0..<8 { _ = try? await asyncSet("matrix:\(i)", "\(i % 4)") }
-                for i in 0..<4 { _ = try? await asyncSet("capture:\(i)", "\(i)") }
-            case "all-mix1":
-                for i in 0..<6 { _ = try? await asyncSet("output:\(i)", "0") }
-                for i in 0..<8 { _ = try? await asyncSet("matrix:\(i)", "0") }
-                for i in 0..<4 { _ = try? await asyncSet("capture:\(i)", "0") }
+                // Direct Analog 1 (Guitar) to outputs 0-3 in both ears (zero latency)
+                for bus in 0..<4 { _ = try? await asyncSet("output:\(bus)", "12") }
+                _ = try? await asyncSet("output:4", "16")
+                _ = try? await asyncSet("output:5", "17")
+                routingPreset = "Direct Guitar"
+
+            case "mix1":
+                // Route outputs 0-3 to Mix 1 (DSP: Mix 1 L = 18, Mix 1 R = 19)
+                for bus in [0, 2] { _ = try? await asyncSet("output:\(bus)", "18") }
+                for bus in [1, 3] { _ = try? await asyncSet("output:\(bus)", "19") }
+                _ = try? await asyncSet("output:4", "16")
+                _ = try? await asyncSet("output:5", "17")
+                // Setup matrix inputs: 0..3=Analog 1..4 (12..15), 4..5=SPDIF (16..17), 6..7=PCM 1..2 (0..1)
+                let mux = [12, 13, 14, 15, 16, 17, 0, 1]
+                for (idx, src) in mux.enumerated() { _ = try? await asyncSet("matrix:\(idx)", "\(src)") }
+                // Set safe moderate gains for Guitar and DAW in Mix 1 (-14 dB)
+                _ = try? await asyncSet("matrix:0.0", "-14")
+                _ = try? await asyncSet("matrix:1.0", "-14")
+                _ = try? await asyncSet("matrix:0.6", "-14")
+                _ = try? await asyncSet("matrix:1.7", "-14")
+                routingPreset = "Mix 1 (DSP)"
+
+            case "default":
+                for bus in [0, 2] { _ = try? await asyncSet("output:\(bus)", "0") }
+                for bus in [1, 3] { _ = try? await asyncSet("output:\(bus)", "1") }
+                _ = try? await asyncSet("output:4", "16")
+                _ = try? await asyncSet("output:5", "17")
+                let mux = [12, 13, 14, 15, 16, 17, 0, 1]
+                for (idx, src) in mux.enumerated() { _ = try? await asyncSet("matrix:\(idx)", "\(src)") }
+                routingPreset = "Default"
+
             default:
                 break
             }
             await refreshRouting()
-            routingPreset = preset == "default" ? "Default" : preset == "direct" ? "Direct monitoring" : "All Mix 1"
         }
     }
 
@@ -398,16 +454,28 @@ final class ScarlettViewModel: ObservableObject {
         meterHold[index] = 0
     }
 
-    // MARK: - Local-only DAW controls
+    // MARK: - Channel controls (Faders, Mute, Pan)
 
     func toggleInputMute(_ ch: Int) {
         guard state.inputs.indices.contains(ch) else { return }
-        var s = state; s.inputs[ch].mute.toggle(); state = s
+        var s = state
+        s.inputs[ch].mute.toggle()
+        let newMute = s.inputs[ch].mute
+        let peer = ch % 2 == 0 ? ch + 1 : ch - 1
+        if s.inputs[ch].stereoLink && s.inputs.indices.contains(peer) {
+            s.inputs[peer].mute = newMute
+        }
+        state = s
+        updateHardwareMatrixGain(ch: ch)
+        if s.inputs[ch].stereoLink && s.inputs.indices.contains(peer) {
+            updateHardwareMatrixGain(ch: peer)
+        }
     }
 
     func toggleInputSolo(_ ch: Int) {
         guard state.inputs.indices.contains(ch) else { return }
         var s = state; s.inputs[ch].solo.toggle(); state = s
+        syncAllChannelsToHardware()
     }
 
     func toggleInputPfl(_ ch: Int) {
@@ -417,12 +485,28 @@ final class ScarlettViewModel: ObservableObject {
 
     func toggleInputStereoLink(_ ch: Int) {
         guard state.inputs.indices.contains(ch) else { return }
-        var s = state; s.inputs[ch].stereoLink.toggle(); state = s
+        var s = state
+        s.inputs[ch].stereoLink.toggle()
+        let isLinked = s.inputs[ch].stereoLink
+        let peer = ch % 2 == 0 ? ch + 1 : ch - 1
+        if s.inputs.indices.contains(peer) {
+            s.inputs[peer].stereoLink = isLinked
+            if isLinked {
+                s.inputs[peer].mixLevel = s.inputs[ch].mixLevel
+                s.inputs[peer].mute = s.inputs[ch].mute
+            }
+        }
+        state = s
+        updateHardwareMatrixGain(ch: ch)
+        if s.inputs.indices.contains(peer) {
+            updateHardwareMatrixGain(ch: peer)
+        }
     }
 
     func setInputPan(ch: Int, _ value: Float) {
         guard state.inputs.indices.contains(ch) else { return }
         var s = state; s.inputs[ch].pan = min(1, max(0, value)); state = s
+        updateHardwareMatrixGain(ch: ch)
     }
 
     // MARK: - Mix levels (per-channel faders)
@@ -430,19 +514,124 @@ final class ScarlettViewModel: ObservableObject {
     func setMixLevel(ch: Int, _ level: Float) {
         guard state.inputs.indices.contains(ch) else { return }
         let clamped = min(1, max(0, level))
-        var s = state; s.inputs[ch].mixLevel = clamped; state = s
+        var s = state
+        s.inputs[ch].mixLevel = clamped
+        let peer = ch % 2 == 0 ? ch + 1 : ch - 1
+        if s.inputs[ch].stereoLink && s.inputs.indices.contains(peer) {
+            s.inputs[peer].mixLevel = clamped
+        }
+        state = s
+        updateHardwareMatrixGain(ch: ch)
+        if s.inputs[ch].stereoLink && s.inputs.indices.contains(peer) {
+            updateHardwareMatrixGain(ch: peer)
+        }
+    }
+
+    // MARK: - Stereo Channel Helpers
+
+    func setStereoMixLevel(left: Int, right: Int, _ level: Float) {
+        guard state.inputs.indices.contains(left), state.inputs.indices.contains(right) else { return }
+        let clamped = min(1, max(0, level))
+        var s = state
+        s.inputs[left].mixLevel = clamped
+        s.inputs[right].mixLevel = clamped
+        state = s
+        updateHardwareMatrixGain(ch: left)
+        updateHardwareMatrixGain(ch: right)
+    }
+
+    func setStereoPan(left: Int, right: Int, _ balance: Float) {
+        guard state.inputs.indices.contains(left), state.inputs.indices.contains(right) else { return }
+        let clamped = min(1, max(0, balance))
+        var s = state
+        s.inputs[left].pan = clamped
+        s.inputs[right].pan = clamped
+        state = s
+        updateHardwareMatrixGain(ch: left)
+        updateHardwareMatrixGain(ch: right)
+    }
+
+    func toggleStereoMute(left: Int, right: Int) {
+        guard state.inputs.indices.contains(left), state.inputs.indices.contains(right) else { return }
+        var s = state
+        let newMute = !s.inputs[left].mute
+        s.inputs[left].mute = newMute
+        s.inputs[right].mute = newMute
+        state = s
+        updateHardwareMatrixGain(ch: left)
+        updateHardwareMatrixGain(ch: right)
+    }
+
+    func toggleStereoSolo(left: Int, right: Int) {
+        guard state.inputs.indices.contains(left), state.inputs.indices.contains(right) else { return }
+        var s = state
+        let newSolo = !s.inputs[left].solo
+        s.inputs[left].solo = newSolo
+        s.inputs[right].solo = newSolo
+        state = s
+        syncAllChannelsToHardware()
+    }
+
+    func toggleStereoPfl(left: Int, right: Int) {
+        guard state.inputs.indices.contains(left), state.inputs.indices.contains(right) else { return }
+        var s = state
+        let newPfl = !s.inputs[left].pfl
+        s.inputs[left].pfl = newPfl
+        s.inputs[right].pfl = newPfl
+        state = s
+    }
+
+    func syncAllChannelsToHardware() {
+        for ch in state.inputs.indices {
+            updateHardwareMatrixGain(ch: ch)
+        }
+    }
+
+    private func updateHardwareMatrixGain(ch: Int) {
+        guard state.inputs.indices.contains(ch) else { return }
+        let input = state.inputs[ch]
         let mixIdx = activeMix
+        let leftMix = mixIdx * 2
+        let rightMix = mixIdx * 2 + 1
+
+        let anySolo = state.inputs.contains { $0.solo }
+        let isMuted = input.mute || (anySolo && !input.solo)
+        let dB: Int
+        if isMuted {
+            dB = -128
+        } else {
+            dB = Int(Self.mixDB(for: input.mixLevel).rounded())
+        }
+
         Task { @MainActor in
-            let dB = Int(Self.mixDB(for: clamped).rounded())
-            _ = try? await asyncSet("matrix:\(mixIdx).\(ch)", "\(dB)")
+            if ch == 4 || ch == 6 {
+                // Stereo Left channel (S/PDIF L or DAW 1) -> routes only to Left mix
+                let pan = input.pan
+                let leftGain = isMuted ? -128 : ((pan > 0.5) ? max(-128, dB - Int(round((pan - 0.5) * 2 * 30))) : dB)
+                _ = try? await asyncSet("matrix:\(leftMix).\(ch)", "\(leftGain)")
+                _ = try? await asyncSet("matrix:\(rightMix).\(ch)", "-128")
+            } else if ch == 5 || ch == 7 {
+                // Stereo Right channel (S/PDIF R or DAW 2) -> routes only to Right mix
+                let pan = input.pan
+                let rightGain = isMuted ? -128 : ((pan < 0.5) ? max(-128, dB - Int(round((0.5 - pan) * 2 * 30))) : dB)
+                _ = try? await asyncSet("matrix:\(leftMix).\(ch)", "-128")
+                _ = try? await asyncSet("matrix:\(rightMix).\(ch)", "\(rightGain)")
+            } else {
+                // Mono analog channels (Inputs 1-4) -> pan to Left & Right
+                let pan = input.pan
+                let leftGain = isMuted ? -128 : (pan <= 0.5 ? dB : max(-128, dB - Int(round((pan - 0.5) * 2 * 30))))
+                let rightGain = isMuted ? -128 : (pan >= 0.5 ? dB : max(-128, dB - Int(round((0.5 - pan) * 2 * 30))))
+                _ = try? await asyncSet("matrix:\(leftMix).\(ch)", "\(leftGain)")
+                _ = try? await asyncSet("matrix:\(rightMix).\(ch)", "\(rightGain)")
+            }
         }
     }
 
     // MARK: - dB conversion
 
     static func mixDB(for position: Float) -> Float {
-        if position <= 0.75 { return -128 + (position / 0.75) * 128 }
-        return 0
+        if position <= 0.75 { return -128 + (position / 0.75) * 116 } // 0.75 fader = safe -12 dB headroom
+        return -12 + ((position - 0.75) / 0.25) * 12 // up to 0 dB max at top
     }
 
     static func dBString(from position: Float) -> String {

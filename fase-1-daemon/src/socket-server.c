@@ -100,7 +100,7 @@ socket_server_start(
 
 		client = accept(fd, NULL, NULL);
 		if (client < 0) {
-			if (errno == EINTR)
+			if (errno == EINTR || errno == EBADF || errno == EINVAL || errno == ECONNABORTED)
 				break;
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
 				continue;
@@ -118,7 +118,9 @@ void
 socket_server_stop(void)
 {
 	if (listen_fd >= 0) {
-		close(listen_fd);
+		int fd = listen_fd;
 		listen_fd = -1;
+		shutdown(fd, SHUT_RDWR);
+		close(fd);
 	}
 }

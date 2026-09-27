@@ -52,16 +52,37 @@
 - `gain:N lo|hi` ✓ · `matrix:N src` ✓ · `matrix:N.M gain` ✓ · `output:N src` ✓ · `capture:N src` ✓
 - `save` → OK saved ✓
 
+- [x] **Auto-recovery MIDIServer en daemon** (`usb-io.mm`): si `IOUSBHostDevice` falla al abrir con exclusive lock, mata `MIDIServer` automáticamente y reintenta de inmediato.
+- [x] **Corrección de fórmula de nodos de matriz en daemon** (`main.c`): `(in << 3) | (mix & 7)` de acuerdo al hardware Scarlett 6i6 1ª Gen.
+- [x] **Codificación de ganancia de matriz en 16-bit signed**: Scarlett Gen 1 requiere `(int16_t)(dB * 256)` (dB en byte alto, fracción en byte bajo). Corregido el bug donde se enviaba en el byte bajo y el hardware quedaba siempre a 0 dB sin mutear.
+- [x] **Cache de estado en daemon para registros write-only**: El firmware de Scarlett Gen 1 devuelve 0 en `GET_CUR` para multiplexores de salida/captura y ganancias de matriz (comportamiento idéntico al driver ALSA Linux). El daemon mantiene ahora `g_output_mux_cache`, `g_capture_mux_cache` y `g_matrix_gain_cache`.
+- [x] **Protección física contra bucles de feedback**: Multiplexores de captura bloqueados a entradas físicas analógicas y SPDIF (12..17). Imposible realimentar la salida del Mac/DAW en la entrada de grabación.
+- [x] **Mute, Solo y Faders reales y funcionales**: Los botones `M`, `S`, y faders de cada canal (incluyendo Guitarra en Input 1 y Mac/Spotify en DAW 1/2) aplican silenciado (-128 dB) y headroom seguro (-12 dB por defecto) directamente en la matriz DSP del hardware.
+- [x] **Selector rápido de monitorización en TopBar**: `DAW / GarageBand` (PCM 1-2), `Direct Guitar` (latencia cero), `Mix 1 (DSP)`.
+- [x] **Strips de reproducción integrados**: Canal estéreo unificado **`DAW 1-2`** con vúmetros duales L/R independientes, fader sincronizado, perilla de balance estéreo, Mute, Solo y PFL para controlar la música/reproducción del Mac con un solo control.
+- [x] **Menú de Routing con nombres amigables**: `DAW 1/2`, `Input 1..4`, `Mix 1..3 L/R` en lugar de índices crudos.
+
+## Fase 1 — Comandos verificados contra Scarlett 6i6 real
+
+### GET
+- `clock` → S/PDIF ✓ · `rate` → 44100 Hz ✓ · `sync` → Locked ✓
+- `meters` → 4 canales activos ✓ · `volume` → dB ✓ · `mute` ✓
+- `impedance:N` ✓ · `pad:N` ✓ · `gain:N` ✓ · `matrix:N` ✓ · `matrix:N.M` ✓
+- `output:N` ✓ · `capture:N` ✓
+
+### SET
+- `volume dB` ✓ · `mute on|off` ✓ · `impedance:N line|hi-z` (LED) ✓ · `pad:N` (LED parpadea) ✓
+- `gain:N lo|hi` ✓ · `matrix:N src` ✓ · `matrix:N.M gain` ✓ · `output:N src` ✓ · `capture:N src` ✓
+- `save` → OK saved ✓
+
 ## Pendiente / problemas conocidos
 
 - **Bug resuelto: teclado no escribía en los TextField** — la app se lanzaba como binario desnudo (sin Info.plist) y macOS la trataba como `.accessory`: ventanas nunca key → ratón OK, teclado muerto. Fix: `setActivationPolicy(.regular)` en `applicationDidFinishLaunching` + `NSApp.activate(ignoringOtherApps:)`.
 - **Panel Presets usa `NativeTextField`** (NSTextField vía NSViewRepresentable) + popover cacheado en @State del ContentView (los repaints 10 Hz del polling no recrean el panel ni roban el foco).
-- Verificar con hardware enchufado: los flujos USB reales (watchdog re-open tras desenchufe, presets end-to-end) solo se prueban con la 6i6 presente. Al enchufar: `killall MIDIServer` si el open falla.
-- El daemon v0.2 ya reabre el device solo (watchdog), así que no hay que reiniciarlo al reconectar el USB.
-- SIGTERM directo a la app (kill) huerfana el daemon — inofensivo: la app lo reutiliza o respawnea al relanzarse. Cmd+Q y cerrar ventana limpian bien.
+- **Bug resuelto: MIDIServer bloqueaba el dispositivo USB** — Ahora `usb-io.mm` mata `MIDIServer` automáticamente y reabre sin intervención manual.
 
 ## Cómo lanzar
 
 - Daemon: `fase-1-daemon/build/scarlett-daemon` (socket `/tmp/scarlett-6i6.sock`)
-- App: `cd fase-2-gui/scarlett-app && swift build && open .build/arm64-apple-macosx/debug/scarlett-app`
+- App: `open "/Applications/Scarlett 6i6 Mixer.app"`
 - Log app: `/tmp/scarlett-app-crash.log`

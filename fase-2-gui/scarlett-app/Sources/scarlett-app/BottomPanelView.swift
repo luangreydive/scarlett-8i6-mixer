@@ -7,18 +7,17 @@ struct BottomPanelView: View {
     var onSettings: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .top, spacing: 8) {
             RoutingPanelView(onPreset: onPreset)
-                .frame(width: totalWidth * 0.55)
-            Divider()
+                .frame(maxWidth: .infinity)
+
             ClockPanelView(onSettings: onSettings)
-                .frame(width: totalWidth * 0.25)
-            Divider()
+                .frame(width: max(185, totalWidth * 0.26))
+
             MonitorPanelView()
-                .frame(width: totalWidth * 0.20)
+                .frame(width: max(140, totalWidth * 0.18))
         }
-        .foregroundStyle(.white)
-        .background(ScarlettUI.panelBackground)
-        .padding(6)
+        .padding(8)
+        .background(Color(red: 0.07, green: 0.08, blue: 0.09))
     }
 }

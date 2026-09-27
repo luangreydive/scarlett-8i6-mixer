@@ -33,29 +33,32 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { }
         }
         .confirmationDialog("Routing Preset", isPresented: $showRoutingPreset) {
-            Button("Default (Mix per output)") { vm.applyRoutingPreset("default") }
-            Button("Direct Monitoring") { vm.applyRoutingPreset("direct") }
-            Button("All Mix 1") { vm.applyRoutingPreset("all-mix1") }
+            Button("DAW / GarageBand (Software Monitoring)") { vm.applyRoutingPreset("daw") }
+            Button("Direct Guitar (Zero Latency)") { vm.applyRoutingPreset("direct") }
+            Button("Mix 1 (DSP: Guitar + DAW)") { vm.applyRoutingPreset("mix1") }
+            Button("Default (1-to-1 routing)") { vm.applyRoutingPreset("default") }
             Button("Cancel", role: .cancel) { }
         }
         .alert("Scarlett 6i6 Mixer", isPresented: $showSettings) {
             Button("OK") { }
         } message: {
-            Text("scarlett-app v0.2\nBuilt for Scarlett 6i6 3rd gen\n\nMixer UI for scarlett-daemon")
+            Text("scarlett-app v0.2.0\nBuilt for Scarlett 6i6 1st Gen\n\nNative Mixer for macOS")
         }
     }
 
     private var connectedLayout: some View {
         GeometryReader { geo in
+            let headerH: CGFloat = 36 + 32 // TopBar (36) + MixTabs (32)
+            let remainH = max(200, geo.size.height - headerH)
             VStack(spacing: 0) {
                 TopBarView(onPresets: { showPresets = true })
                 MixTabsView()
-                Divider().frame(height: 0)
                 ChannelsAreaView(totalWidth: geo.size.width, onCopyMix: { showCopyMix = true })
-                    .frame(height: geo.size.height * 0.58)
-                Divider().frame(height: 0)
+                    .frame(height: remainH * 0.63)
+                Divider()
+                    .background(Color.white.opacity(0.08))
                 BottomPanelView(totalWidth: geo.size.width, onPreset: { showRoutingPreset = true }, onSettings: { showSettings = true })
-                    .frame(height: geo.size.height * 0.42)
+                    .frame(height: remainH * 0.37)
             }
         }
     }

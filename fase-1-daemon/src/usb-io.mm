@@ -69,6 +69,22 @@ scarlett_usb_open(uint16_t vid, uint16_t pid)
 			queue:queue
 			error:&error
 			interestHandler:nil];
+
+		if (!device) {
+			/* CoreMIDI (MIDIServer) frequently holds the device exclusively on macOS.
+			 * Kill MIDIServer and retry seize once. */
+			fprintf(stderr, "scarlett_usb_open: initial seize failed (%s), killing MIDIServer and retrying...\n",
+				error ? [[error localizedDescription] UTF8String] : "busy");
+			system("killall -9 MIDIServer 2>/dev/null");
+			usleep(250000);
+			error = nil;
+			device = [[IOUSBHostDevice alloc]
+				initWithIOService:service
+				options:IOUSBHostObjectInitOptionsDeviceSeize
+				queue:queue
+				error:&error
+				interestHandler:nil];
+		}
 		IOObjectRelease(service);
 
 		if (!device) {

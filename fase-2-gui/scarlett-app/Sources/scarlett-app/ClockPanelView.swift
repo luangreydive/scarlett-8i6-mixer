@@ -5,22 +5,22 @@ struct ClockPanelView: View {
     var onSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            SectionTitle(text: "CLOCK & DEVICE")
+        VStack(alignment: .leading, spacing: 6) {
+            SectionTitle(text: "SYNC & HARDWARE")
 
             HStack {
-                Text("Rate")
+                Text("Sample Rate")
                     .font(ScarlettUI.title(10))
-                    .foregroundStyle(ScarlettUI.secondaryText)
+                    .foregroundStyle(ScarlettUI.textSecondary)
                 Spacer()
                 Picker("", selection: Binding(
                     get: { "\(vm.state.rate)" },
                     set: { vm.setSampleRate(Int($0) ?? 44100) }
                 )) {
                     Text("44.1 kHz").tag("44100")
-                    Text("48 kHz").tag("48000")
+                    Text("48.0 kHz").tag("48000")
                     Text("88.2 kHz").tag("88200")
-                    Text("96 kHz").tag("96000")
+                    Text("96.0 kHz").tag("96000")
                 }
                 .pickerStyle(.menu)
                 .controlSize(.mini)
@@ -29,9 +29,9 @@ struct ClockPanelView: View {
             }
 
             HStack {
-                Text("Clock")
+                Text("Clock Source")
                     .font(ScarlettUI.title(10))
-                    .foregroundStyle(ScarlettUI.secondaryText)
+                    .foregroundStyle(ScarlettUI.textSecondary)
                 Spacer()
                 Picker("", selection: Binding(
                     get: { vm.state.clock },
@@ -47,16 +47,30 @@ struct ClockPanelView: View {
                 .chipStyle()
             }
 
-            clockRow("Sync", vm.state.sync, dot: vm.state.sync == "Locked" ? .green : .red)
-            clockRow("Driver", "USB 2.0", accent: .green)
-            clockRow("Model", "Scarlett 6i6")
+            clockRow("Clock Lock", vm.state.sync, dot: vm.state.sync == "Locked" ? ScarlettUI.emerald : Color.red)
+            clockRow("Interface", "USB 2.0 Audio", accent: ScarlettUI.emerald)
+            clockRow("Hardware", "Scarlett 6i6")
 
             Spacer()
 
-            Button("Settings...") { onSettings() }
-                .font(.system(size: 7)).buttonStyle(.bordered)
-                .controlSize(.mini).frame(maxWidth: .infinity)
+            Button {
+                onSettings()
+            } label: {
+                Text("Device Info…")
+                    .font(ScarlettUI.title(9, .medium))
+                    .foregroundStyle(ScarlettUI.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                    )
+            }
+            .buttonStyle(.plain)
         }
+        .padding(10)
+        .cardStyle(radius: 6)
     }
 
     private func clockRow(_ label: String, _ value: String, dot: Color? = nil, accent: Color? = nil) -> some View {

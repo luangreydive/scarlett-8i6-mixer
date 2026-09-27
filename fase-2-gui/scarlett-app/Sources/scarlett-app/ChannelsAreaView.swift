@@ -9,12 +9,18 @@ struct ChannelsAreaView: View {
     private static let sidePad: CGFloat = 8
 
     var body: some View {
-        let stripW = stripWidth
+        let baseW = stripWidth
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .center, spacing: Self.gap) {
-                channelStrips(width: stripW)
+                channelStrips(baseWidth: baseW)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 1, height: 260)
+                    .padding(.horizontal, 2)
+
                 MasterChannelView(onCopyMix: onCopyMix)
-                    .frame(width: stripW)
+                    .frame(width: max(65, baseW * 1.15))
             }
             .frame(maxHeight: .infinity, alignment: .center)
             .padding(.horizontal, Self.sidePad)
@@ -23,18 +29,20 @@ struct ChannelsAreaView: View {
     }
 
     private var stripWidth: CGFloat {
-        let auto = (totalWidth - Self.sidePad * 2 - Self.gap * 6) / 7
-        return max(55, min(85, auto))
+        let monoCount = CGFloat(ChannelCatalog.all.filter { !$0.isStereo }.count)
+        let stereoCount = CGFloat(ChannelCatalog.all.filter { $0.isStereo }.count)
+        let totalUnits = monoCount + stereoCount * 1.25 + 1.15 // + 1.15 for Master
+        let available = totalWidth - Self.sidePad * 2 - Self.gap * CGFloat(ChannelCatalog.all.count)
+        let base = available / max(1, totalUnits)
+        return max(54, min(75, base))
     }
 
-    private func channelStrips(width: CGFloat) -> some View {
+    private func channelStrips(baseWidth: CGFloat) -> some View {
         HStack(spacing: 2) {
-            ForEach(ChannelCatalog.all.indices, id: \.self) { i in
+            ForEach(ChannelCatalog.all) { spec in
                 ChannelStripView(
-                    index: i,
-                    color: ChannelCatalog.all[i].color,
-                    showPreamp: ChannelCatalog.all[i].isAnalog,
-                    width: width
+                    spec: spec,
+                    width: spec.isStereo ? baseWidth * 1.25 : baseWidth
                 )
             }
         }

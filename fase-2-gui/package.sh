@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/fase-2-gui/dist/Scarlett 6i6 Mixer.app"
 
+CONFIG="${1:-release}"
 (cd "$ROOT/fase-1-daemon" && make >/dev/null)
-(cd "$ROOT/fase-2-gui/scarlett-app" && swift build >/dev/null)
+(cd "$ROOT/fase-2-gui/scarlett-app" && swift build -c "$CONFIG" >/dev/null)
 
-BIN="$ROOT/fase-2-gui/scarlett-app/.build/arm64-apple-macosx/debug/scarlett-app"
+BIN="$ROOT/fase-2-gui/scarlett-app/.build/arm64-apple-macosx/$CONFIG/scarlett-app"
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/scarlett-app"
@@ -25,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleDisplayName</key><string>Scarlett 6i6 Mixer</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>CFBundleShortVersionString</key><string>0.3</string>
-    <key>CFBundleVersion</key><string>0.3</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>0.2.0</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.music</string>

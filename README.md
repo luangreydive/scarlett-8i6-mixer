@@ -12,7 +12,7 @@ This project reverse-engineers the 6i6 1st-gen USB control protocol on macOS and
 
 ## Download
 
-Grab the latest release from the [Releases page](https://github.com/Vumet3r/scarlett-6i6-mixer/releases) — `Scarlett-6i6-Mixer-v0.1.0-beta.zip` (~560 KB). No installers, no kernel drivers, no daemon setup: the app bundles everything it needs.
+Grab the latest release from the [Releases page](https://github.com/Vumet3r/scarlett-6i6-mixer/releases) — `Scarlett-6i6-Mixer-v0.2.0-beta.zip`. No installers, no kernel drivers, no daemon setup: the app bundles everything it needs.
 
 1. Download and unzip
 2. **Right-click the app → Open** (required on first launch: the app is not Apple-notarized, so Gatekeeper will ask for confirmation) and click Open again
@@ -22,13 +22,16 @@ Requirements: **macOS 14+** and a connected **Scarlett 6i6 (1st Gen)**.
 
 ## Features
 
-- **Matrix mixer / routing** — every input (analog, S/PDIF, ADAT) to every output, with gain in dB
+- **Modern Studio UI** — dark graphite console aesthetics, realistic faders with grip ridges, calibrated 3-stage LED meters, and rotary pan knobs with radial arcs
+- **Stereo DAW playback** — unified DAW 1-2 channel with dual L/R peak meters, fader, and balance control
+- **Quick routing presets** — one-click setups for DAW / GarageBand (software monitoring), Direct Guitar (zero-latency DSP mix), Mix 1, and 1-to-1 default
+- **Matrix mixer / routing** — every input (analog, S/PDIF, ADAT) to every output, with accurate dB scaling
 - **Level meters** — 10 Hz polling with fast decay and click-to-reset peak hold
-- **Preamps** — gain, +48V phantom power, input switching (line / instrument / 10kΩ pad), phase invert
+- **Preamps** — gain (Lo/Hi, Line/Inst), 10kΩ pad, phantom power switching
 - **Clock & sample rate** — clock source (`Internal` / `S/PDIF` / `ADAT`) and 44.1–96 kHz rate selection, straight from the UI
 - **Presets** — JSON save/load/export/import, plus **write presets to the hardware's internal flash** (like Mix Control)
 - **Zero setup** — ships as a `.app` bundle with the daemon embedded; no kernel drivers, no kexts, no Mix Control needed
-- **Resilience** — daemon auto-respawns, watchdog recovers from USB resets, app auto-reconnects
+- **Resilience & Safety** — feedback loop protection, daemon auto-respawns, watchdog recovers from USB resets, app auto-reconnects
 - **No notifications required** — the 1st-gen interrupt endpoint is not exposed on macOS, so the daemon polls the hardware instead
 
 ## Architecture

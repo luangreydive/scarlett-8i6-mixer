@@ -12,14 +12,15 @@
 #include <time.h>
 
 #define SCARLETT_VID 0x1235
-#define SCARLETT_PID 0x8012
+#define SCARLETT_PID 0x8002   /* 8i6: Scarlett 8i6 1st Gen (the 6i6 is 0x8012) */
 
 static volatile sig_atomic_t keep_running = 1;
 static scarlett_device_t *g_dev = NULL;
 static pthread_mutex_t    g_dev_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile int       g_usb_failures = 0;
 
-static int g_output_mux_cache[6] = { 18, 19, 18, 19, 16, 17 };
+/* 8i6: monitors and headphones straight from the computer (PCM 1/2), no mixer */
+static int g_output_mux_cache[6] = { 0, 1, 0, 1, 16, 17 };
 static int g_capture_mux_cache[6] = { 12, 13, 14, 15, 16, 17 };
 static int g_matrix_gain_cache[144];
 
@@ -37,8 +38,10 @@ static void enforce_safe_hardware_routing(void)
 		usb_write_cur(0x0000 | i, 0x3400, d, 2);
 	}
 
-	/* 2. Output routing: Mon L/R and HP 1/2 listen to Mix 1 (18, 19); SPDIF to SPDIF (16, 17) */
-	int out_mux[6] = { 18, 19, 18, 19, 16, 17 };
+	/* 2. Output routing.
+	 * 8i6: Mon L/R and HP L/R straight from the computer (PCM 1 = 0, PCM 2 = 1), "DAW" mode.
+	 * The original used Mix 1 (18, 19), which leaves the monitors silent on the 8i6. */
+	int out_mux[6] = { 0, 1, 0, 1, 16, 17 };
 	for (int i = 0; i < 6; i++) {
 		g_output_mux_cache[i] = out_mux[i];
 		uint8_t d[2] = { (uint8_t)out_mux[i], 0 };
@@ -60,12 +63,14 @@ static void enforce_safe_hardware_routing(void)
 	g_matrix_gain_cache[0] = -12;
 	// Node 1: Guitar (In 0) -> Mix 1 R (Mix 1)
 	g_matrix_gain_cache[1] = -12;
+	// 8i6: DAW at 0 dB (unity) so the computer plays at full volume
 	// Node 48: DAW 1 (In 6) -> Mix 1 L (Mix 0)
-	g_matrix_gain_cache[48] = -12;
+	g_matrix_gain_cache[48] = 0;
 	// Node 57: DAW 2 (In 7) -> Mix 1 R (Mix 1)
-	g_matrix_gain_cache[57] = -12;
+	g_matrix_gain_cache[57] = 0;
 
 	for (int i = 0; i < 144; i++) {
+		if ((i & 7) >= 6) continue;   /* 8i6: only 6 mixes (A-F) */
 		int dB = g_matrix_gain_cache[i];
 		int16_t v = (int16_t)(dB * 256);
 		uint8_t d[2] = { (uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff) };
@@ -228,7 +233,8 @@ static int cmd_get_volume(char *r, size_t rs, int bus)
 {
 	uint8_t d[2] = {0};
 	if (usb_read_cur(0x0200 | bus, 0x0a00, d, 2)) goto e;
-	int dB = (int)d[0] - 128;
+	/* 8i6: volume is signed 16-bit in 1/256 dB (as in the Linux driver) */
+	int dB = (int16_t)(d[0] | (d[1] << 8)) / 256;
 	snprintf(r, rs, "OK %d dB", dB);
 	return 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
@@ -342,6 +348,8 @@ static int cmd_set_impedance(char *r, size_t rs, int ch, const char *val)
 
 static int cmd_set_pad(char *r, size_t rs, int ch, const char *val)
 {
+	/* 8i6: the pad only exists on inputs 3 and 4 */
+	if (ch != 3 && ch != 4) return snprintf(r, rs, "ERR n/a: pad only on inputs 3-4 (8i6)"), -1;
 	uint8_t d[2] = {0};
 	if      (!strcmp(val, "off")) d[0] = 0;
 	else if (!strcmp(val, "on"))  d[0] = 1;
@@ -352,6 +360,9 @@ static int cmd_set_pad(char *r, size_t rs, int ch, const char *val)
 
 static int cmd_set_gain(char *r, size_t rs, int ch, const char *val)
 {
+	/* 8i6: there is no Lo/Hi gain switch */
+	(void)ch; (void)val;
+	return snprintf(r, rs, "ERR n/a: the 8i6 has no Lo/Hi switch"), -1;
 	uint8_t d[2] = {0};
 	if      (!strcmp(val, "lo")) d[0] = 0;
 	else if (!strcmp(val, "hi")) d[0] = 1;
@@ -363,8 +374,9 @@ static int cmd_set_gain(char *r, size_t rs, int ch, const char *val)
 static int cmd_set_volume(char *r, size_t rs, int bus, int dB)
 {
 	if (dB < -128 || dB > 0) return snprintf(r, rs, "ERR dB: -128..0"), -1;
-	uint8_t d[2] = {0};
-	d[0] = (uint8_t)(dB + 128);
+	/* 8i6: signed 16-bit in 1/256 dB (the original sent dB+128, which does not lower the volume on the 8i6) */
+	int16_t v = (int16_t)(dB * 256);
+	uint8_t d[2] = { (uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff) };
 	if (usb_write_cur(0x0200 | bus, 0x0a00, d, 2)) goto e;
 	return snprintf(r, rs, "OK %d dB", dB), 0; e: snprintf(r, rs, "ERR ctl"); return -1;
 }
@@ -501,18 +513,16 @@ static void scarlett_response(const char *cmd, char *r, size_t rs)
 			pos += snprintf(buf+pos, sizeof(buf)-pos, " sync=%s",
 				d[0] ? "Locked" : "Unlocked");
 		if (!usb_read_cur(0x0200, 0x0a00, d, 2))
-			pos += snprintf(buf+pos, sizeof(buf)-pos, " vol=%ddB", (int)d[0]-128);
+			pos += snprintf(buf+pos, sizeof(buf)-pos, " vol=%ddB", (int16_t)(d[0] | (d[1] << 8)) / 256);
 		if (!usb_read_cur(0x0100, 0x0a00, d, 2))
 			pos += snprintf(buf+pos, sizeof(buf)-pos, " mute=%d", d[0]);
-		for (int ch = 1; ch <= 2; ch++) {
+		/* 8i6: impedance on 1-2, pad on 3-4, no Lo/Hi switch */
+		for (int ch = 1; ch <= 2; ch++)
 			if (!usb_read_cur(0x0900|ch, 0x0100, d, 2))
 				pos += snprintf(buf+pos, sizeof(buf)-pos, " imp%d=%s", ch, str_line_hi(d[0]));
+		for (int ch = 3; ch <= 4; ch++)
 			if (!usb_read_cur(0x0b00|ch, 0x0100, d, 2))
 				pos += snprintf(buf+pos, sizeof(buf)-pos, " pad%d=%s", ch, str_onoff(d[0]));
-		}
-		for (int ch = 3; ch <= 4; ch++)
-			if (!usb_read_cur(0x0800|ch, 0x0100, d, 2))
-				pos += snprintf(buf+pos, sizeof(buf)-pos, " gain%d=%s", ch, str_lo_hi(d[0]));
 		snprintf(r, rs, "%s", buf);
 		return;
 	}
@@ -578,7 +588,8 @@ int main(void)
 {
 	struct sigaction sa;
 	pthread_t wd;
-	printf("scarlett-daemon v0.2.0\n");
+	setvbuf(stdout, NULL, _IOLBF, 0);   /* 8i6: flush the log line by line */
+	printf("scarlett-daemon v0.2.0 (8i6 port)\n");
 
 	signal(SIGPIPE, SIG_IGN);
 
@@ -599,7 +610,7 @@ int main(void)
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 
-	socket_server_start("/tmp/scarlett-6i6.sock", cmd_handler);
+	socket_server_start("/tmp/scarlett-8i6.sock", cmd_handler);
 
 	keep_running = 0;
 	pthread_join(wd, NULL);

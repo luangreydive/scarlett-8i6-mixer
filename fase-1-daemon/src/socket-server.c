@@ -59,7 +59,7 @@ socket_server_start(
 	int fd, rc;
 
 	if (!path)
-		path = "/tmp/scarlett-6i6.sock";
+		path = "/tmp/scarlett-8i6.sock";
 
 	cmd_handler = handler;
 

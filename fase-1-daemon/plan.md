@@ -1,49 +1,51 @@
-# Fase 1 — Daemon USB (5 días)
+# Phase 1 — USB daemon (5 days)
 
-Objetivo: CLI en macOS que habla con la Scarlett 6i6 vía USB.
+> Original planning notes from the upstream 6i6 project (translated to English).
 
-## Tareas
+Goal: a macOS CLI that talks to the Scarlett 6i6 over USB.
 
-### 1.0 Detectar y abrir dispositivo USB (día 1)
-- [ ] Usar `ioreg -p IOUSB -w0 | grep -i scarlett`
-- [ ] Escribir mini programa C que abre el device con IOKit
-- [ ] Verificar USB ID 0x1235:0x8012
-- [ ] Leer descriptor de la interfaz vendor-specific (class 255)
+## Tasks
 
-### 1.1 Comunicación USB básica (días 2-3)
-- [ ] Implementar `usb_ctl_msg` usando IOKit (`USBSendControlRequest`)
-- [ ] Probar comando simple: leer Sample Clock Source
-- [ ] Probar comando de escritura: cambiar impedance del Input 1
-- [ ] Verificar respuestas contra el hardware
+### 1.0 Detect and open the USB device (day 1)
+- [ ] Use `ioreg -p IOUSB -w0 | grep -i scarlett`
+- [ ] Write a small C program that opens the device with IOKit
+- [ ] Check USB ID 0x1235:0x8012
+- [ ] Read the vendor-specific interface descriptor (class 255)
 
-Referencia: `mixer_scarlett.c` líneas de inicialización y las funciones
-`snd_usb_ctl_msg`. En IOKit se usa `USBDeviceReadPipe` / `USBSendControlRequest`.
+### 1.1 Basic USB communication (days 2-3)
+- [ ] Implement `usb_ctl_msg` with IOKit (`USBSendControlRequest`)
+- [ ] Try a simple command: read the Sample Clock Source
+- [ ] Try a write command: change the impedance of Input 1
+- [ ] Check the responses against the hardware
 
-### 1.2 Puerto de mixer_scarlett.c (días 3-4)
-- [ ] Copiar estructuras de hardware: `s6i6_info`, `s8i6_info`, etc. (~260 líneas)
-- [ ] Copiar mapeo de wIndex/wValue/canales
-- [ ] Copiar inicialización de sample rate
-- [ ] Ignorar secciones `forte_*` (Focusrite Forte, ~400 líneas)
-- [ ] Reemplazar callbacks ALSA por función que envía datos al socket
+Reference: the initialization lines and the `snd_usb_ctl_msg` functions in
+`mixer_scarlett.c`. IOKit uses `USBDeviceReadPipe` / `USBSendControlRequest`.
 
-### 1.3 Daemon socket (día 5)
-- [ ] Socket Unix en `/tmp/scarlett-6i6.sock`
-- [ ] Protocolo: `GET <port>` / `SET <port> <value>` / `GET_METERS` / `SAVE`
-- [ ] Formato: JSON o binario simple
-- [ ] Manejar múltiples conexiones (thread pool o dispatch)
+### 1.2 Port of mixer_scarlett.c (days 3-4)
+- [ ] Copy the hardware structures: `s6i6_info`, `s8i6_info`, etc. (~260 lines)
+- [ ] Copy the wIndex/wValue/channel mapping
+- [ ] Copy the sample rate initialization
+- [ ] Ignore the `forte_*` sections (Focusrite Forte, ~400 lines)
+- [ ] Replace the ALSA callbacks with a function that sends data to the socket
 
-### 1.4 Notificaciones USB (día 5)
-- [ ] Implementar URB de notificación con IOKit (interrupt pipe)
-- [ ] Enviar eventos por socket a los clientes conectados
+### 1.3 Socket daemon (day 5)
+- [ ] Unix socket at `/tmp/scarlett-6i6.sock`
+- [ ] Protocol: `GET <port>` / `SET <port> <value>` / `GET_METERS` / `SAVE`
+- [ ] Format: JSON or simple binary
+- [ ] Handle multiple connections (thread pool or dispatch)
 
-## Archivos a crear
-- `scarlett-daemon.c` — entry point, loop principal
-- `usb-io.c` + `usb-io.h` — wrappers IOKit
-- `scarlett-protocol.c` + `scarlett-protocol.h` — comandos USB específicos Scarlett
-- `socket-server.c` + `socket-server.h` — servidor Unix socket
+### 1.4 USB notifications (day 5)
+- [ ] Implement the notification URB with IOKit (interrupt pipe)
+- [ ] Send events to connected clients over the socket
+
+## Files to create
+- `scarlett-daemon.c` — entry point, main loop
+- `usb-io.c` + `usb-io.h` — IOKit wrappers
+- `scarlett-protocol.c` + `scarlett-protocol.h` — Scarlett-specific USB commands
+- `socket-server.c` + `socket-server.h` — Unix socket server
 - `Makefile`
 
-## Criterio de éxito
+## Success criteria
 ```bash
 scarlett-daemon &
 scarlett-client get impedance:1

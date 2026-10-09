@@ -14,3 +14,6 @@ mixer_scarlett.h
 .DS_Store
 *.log
 *.zip
+# Local build output
+*.app/
+release/

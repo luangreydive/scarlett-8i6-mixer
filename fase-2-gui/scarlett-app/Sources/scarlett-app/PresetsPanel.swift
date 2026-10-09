@@ -3,9 +3,9 @@ import SwiftUI
 struct PresetsPanel: View {
     @EnvironmentObject var vm: ScarlettViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var newName = ""
-    @State private var capturing = false
-    @State private var confirmDelete: ScarlettPreset?
+    @LocalState private var newName = ""
+    @LocalState private var capturing = false
+    @LocalState private var confirmDelete: ScarlettPreset?
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -104,7 +104,7 @@ struct PresetsPanel: View {
         guard !vm.presets.isEmpty else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "scarlett-\(newName.isEmpty ? "snapshot" : newName).6i6.json"
+        panel.nameFieldStringValue = "scarlett-\(newName.isEmpty ? "snapshot" : newName).8i6.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let preset = vm.presets.sorted(by: { $0.createdAt > $1.createdAt })[0]
         try? vm.exportPreset(preset, to: url)
@@ -117,7 +117,7 @@ struct PresetsPanel: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         vm.importPreset(from: url)
         newName = url.deletingPathExtension().lastPathComponent
-            .replacingOccurrences(of: ".6i6", with: "")
+            .replacingOccurrences(of: ".8i6", with: "")
             .replacingOccurrences(of: ".scarlett", with: "")
     }
 
@@ -163,7 +163,7 @@ struct PresetsPanel: View {
     private func exportPreset(_ preset: ScarlettPreset) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "\(preset.name) 6i6.json".replacingOccurrences(of: " ", with: "-")
+        panel.nameFieldStringValue = "\(preset.name) 8i6.json".replacingOccurrences(of: " ", with: "-")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? vm.exportPreset(preset, to: url)
     }

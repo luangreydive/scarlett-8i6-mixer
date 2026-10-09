@@ -49,7 +49,7 @@ struct ClockPanelView: View {
 
             clockRow("Clock Lock", vm.state.sync, dot: vm.state.sync == "Locked" ? ScarlettUI.emerald : Color.red)
             clockRow("Interface", "USB 2.0 Audio", accent: ScarlettUI.emerald)
-            clockRow("Hardware", "Scarlett 6i6")
+            clockRow("Hardware", "Scarlett 8i6")
 
             Spacer()
 

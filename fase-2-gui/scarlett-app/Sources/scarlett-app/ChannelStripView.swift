@@ -84,17 +84,21 @@ struct ChannelStripView: View {
     private var isHi: Bool { spec.leftIndex < 2 ? leftCh?.impedance == "Hi-Z" : leftCh?.gain == "Hi" }
 
     private var preampSection: some View {
+        // 8i6: Line/Inst only on inputs 1-2; Pad only on 3-4; no Lo/Hi switch
         VStack(spacing: 3) {
-            HStack(spacing: 3) {
-                ToggleButton(label: spec.leftIndex < 2 ? "Line" : "Lo", isOn: isLo, onColor: .cyan, offColor: ScarlettUI.textMuted, height: 18) {
-                    vm.setGain(ch: spec.leftIndex + 1, "lo")
+            if spec.leftIndex < 2 {
+                HStack(spacing: 3) {
+                    ToggleButton(label: "Line", isOn: isLo, onColor: .cyan, offColor: ScarlettUI.textMuted, height: 18) {
+                        vm.setGain(ch: spec.leftIndex + 1, "lo")
+                    }
+                    ToggleButton(label: "Inst", isOn: isHi, onColor: .cyan, offColor: ScarlettUI.textMuted, height: 18) {
+                        vm.setGain(ch: spec.leftIndex + 1, "hi")
+                    }
                 }
-                ToggleButton(label: spec.leftIndex < 2 ? "Inst" : "Hi", isOn: isHi, onColor: .cyan, offColor: ScarlettUI.textMuted, height: 18) {
-                    vm.setGain(ch: spec.leftIndex + 1, "hi")
+            } else {
+                ToggleButton(label: "Pad", isOn: leftCh?.pad == true, onColor: .orange, offColor: ScarlettUI.textMuted, height: 18) {
+                    vm.setPad(ch: spec.leftIndex + 1, !(leftCh?.pad ?? false))
                 }
-            }
-            ToggleButton(label: "Pad", isOn: leftCh?.pad == true, onColor: .orange, offColor: ScarlettUI.textMuted, height: 18) {
-                vm.setPad(ch: spec.leftIndex + 1, !(leftCh?.pad ?? false))
             }
         }
     }

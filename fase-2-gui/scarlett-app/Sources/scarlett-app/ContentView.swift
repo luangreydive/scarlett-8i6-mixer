@@ -2,13 +2,13 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var vm: ScarlettViewModel
-    @State private var showCopyMix = false
-    @State private var showRoutingPreset = false
-    @State private var showSettings = false
-    @State private var showPresets = false
+    @LocalState private var showCopyMix = false
+    @LocalState private var showRoutingPreset = false
+    @LocalState private var showSettings = false
+    @LocalState private var showPresets = false
     /// Created once so meter-poll repaints of ContentView (10 Hz) don't
     /// recreate the popover content and steal keyboard focus / state.
-    @State private var presetsPanel = PresetsPanel()
+    @LocalState private var presetsPanel = PresetsPanel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +24,7 @@ struct ContentView: View {
                 .environmentObject(vm)
         }
         .confirmationDialog("Copy Mix to...", isPresented: $showCopyMix) {
-            ForEach(0..<8, id: \.self) { i in
+            ForEach(0..<3, id: \.self) { i in   // 8i6: 3 mix pairs
                 let mixNum = i * 2 + 1
                 if i != vm.activeMix {
                     Button("Mix \(mixNum)") { vm.copyMixTo(i) }
@@ -39,10 +39,10 @@ struct ContentView: View {
             Button("Default (1-to-1 routing)") { vm.applyRoutingPreset("default") }
             Button("Cancel", role: .cancel) { }
         }
-        .alert("Scarlett 6i6 Mixer", isPresented: $showSettings) {
+        .alert("Scarlett 8i6 Mixer", isPresented: $showSettings) {
             Button("OK") { }
         } message: {
-            Text("scarlett-app v0.2.0\nBuilt for Scarlett 6i6 1st Gen\n\nNative Mixer for macOS")
+            Text("scarlett-app v0.2.0\nBuilt for Scarlett 6i6 1st Gen — adaptado a 8i6\n\nNative Mixer for macOS")
         }
     }
 
@@ -71,7 +71,7 @@ struct DisconnectedView: View {
         VStack(spacing: 16) {
             Image(systemName: "rectangle.slash")
                 .font(.system(size: 48)).foregroundColor(.red)
-            Text("Scarlett 6i6 not connected")
+            Text("Scarlett 8i6 not connected")
                 .font(.title2)
                 .foregroundStyle(.white)
             if let lastError = vm.lastError, !lastError.isEmpty {

@@ -1,53 +1,55 @@
-# Fase 2 — GUI macOS nativa (10 días)
+# Phase 2 — Native macOS GUI (10 days)
 
-Objetivo: App SwiftUI que se conecta al daemon y permite controlar la Scarlett.
+> Original planning notes from the upstream 6i6 project (translated to English).
 
-## Estrategia: Opción B (recomendada)
-Reescribir la GUI en SwiftUI manteniendo la lógica C pura:
-- Lógica de routing/mixer (C, ~15k líneas) se compila igual en macOS
-- Solo reemplazar:
+Goal: a SwiftUI app that connects to the daemon and controls the Scarlett.
+
+## Strategy: Option B (recommended)
+Rewrite the GUI in SwiftUI while keeping the pure C logic:
+- Routing/mixer logic (C, ~15k lines) compiles as-is on macOS
+- Only replace:
   - GTK4 → SwiftUI/Cocoa
-  - ALSA → socket daemon
+  - ALSA → daemon socket
   - inotify → FSEvents / IOKit notification
 
-## Tareas
+## Tasks
 
-### 2.0 Cliente socket (días 1-2)
-- [ ] Escribir `libscarlett-client.c/h` — wrapper C del protocolo daemon
-- [ ] Bridge Swift → C (modulemap o wrapper ObjC)
-- [ ] Probar conexión desde Swift playground
+### 2.0 Socket client (days 1-2)
+- [ ] Write `libscarlett-client.c/h` — C wrapper for the daemon protocol
+- [ ] Swift → C bridge (modulemap or ObjC wrapper)
+- [ ] Test the connection from a Swift playground
 
-### 2.1 Mixer básico (días 3-5)
-- [ ] Ventana principal con faders (niveles de canal)
+### 2.1 Basic mixer (days 3-5)
+- [ ] Main window with faders (channel levels)
 - [ ] Mute / Solo buttons
 - [ ] Master volume slider
-- [ ] Conectar cada control al comando SET del daemon
-- [ ] Polling de meters (timer cada 100ms)
+- [ ] Wire each control to the daemon SET command
+- [ ] Meter polling (100 ms timer)
 
-### 2.2 Routing grid (días 5-7)
-- [ ] Matriz routing: fuentes → destinos (Matrix Mixer)
-- [ ] Selectores de fuente por canal de salida
-- [ ] Mostrar nombres de canal desde hardware definitions
+### 2.2 Routing grid (days 5-7)
+- [ ] Routing matrix: sources → destinations (Matrix Mixer)
+- [ ] Source selectors per output channel
+- [ ] Show channel names from the hardware definitions
 
-### 2.3 DSP (días 8-9)
-- [ ] Panel de efectos si aplica
-- [ ] Save/Load presets (guardar estado local)
+### 2.3 DSP (days 8-9)
+- [ ] Effects panel if applicable
+- [ ] Save/Load presets (store local state)
 
-### 2.4 Niveles (meters) (días 9-10)
-- [ ] Barras de nivel en tiempo real
+### 2.4 Levels (meters) (days 9-10)
+- [ ] Real-time level bars
 - [ ] Peak hold
-- [ ] Efecto glow (portar de `glow.c`)
+- [ ] Glow effect (port from `glow.c`)
 
-## Archivos a crear
-- `scarlett-app/` — proyecto Xcode SwiftUI
-- `libscarlett-client/` — cliente C para el socket
-- `scarlett-app/Bridge/` — headers de bridging
+## Files to create
+- `scarlett-app/` — SwiftUI Xcode project
+- `libscarlett-client/` — C client for the socket
+- `scarlett-app/Bridge/` — bridging headers
 
-## Criterio de éxito
-- App lanzable desde Finder
-- Muestra niveles en tiempo real
-- Se puede cambiar impedance, gain, volumen, routing
-- Persiste configuración al cerrar
+## Success criteria
+- App launchable from Finder
+- Shows levels in real time
+- Impedance, gain, volume and routing can be changed
+- Settings persist after closing
 
-## Especificaciones de componentes
-Ver `SPECS.md` de esta fase.
+## Component specifications
+See this phase's `SPECS.md`.

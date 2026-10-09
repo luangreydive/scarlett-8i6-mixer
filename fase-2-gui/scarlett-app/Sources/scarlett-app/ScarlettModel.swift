@@ -19,7 +19,12 @@ struct ScarlettState {
     var dim: Bool = false
     var mono: Bool = false
 
-    var inputs: [InputChannel] = (0..<8).map { InputChannel(index: $0) }
+    // 8i6: the DAW channel (6-7, computer audio) starts at 0 dB (fader at the top)
+    var inputs: [InputChannel] = (0..<8).map { i in
+        var c = InputChannel(index: i)
+        if i >= 6 { c.mixLevel = 1.0 }
+        return c
+    }
     var outputs: [OutputChannel] = (0..<6).map { OutputChannel(index: $0) }
 
     struct InputChannel {
@@ -48,6 +53,9 @@ struct ScarlettState {
 
 @MainActor
 final class ScarlettViewModel: ObservableObject {
+    /// 8i6: a single instance shared by the window, the menu bar and the volume keys.
+    static let shared = ScarlettViewModel()
+
     @Published var state = ScarlettState()
     @Published var isConnected = false
     @Published var meters: [UInt16] = []
@@ -117,12 +125,12 @@ final class ScarlettViewModel: ObservableObject {
             isConnected = true
             lastError = nil
             await refresh()
+            restoreMasterState()     // 8i6
             await refreshRouting()
-            if routing.outputMux.count >= 2 && routing.outputMux[0] != 18 {
-                applyRoutingPreset("mix1")
-            }
+            // 8i6: "Mix 1" is no longer forced on connect: on the 8i6 it leaves the
+            // monitors silent. The daemon routes the computer straight to the monitors (DAW mode).
             syncAllChannelsToHardware()
-            startPolling()
+            if metersWanted { startPolling() }   // 8i6
         } catch {
             lastError = "\(error)"
             fputs("connect error: \(error)\n", stderr)
@@ -157,9 +165,10 @@ final class ScarlettViewModel: ObservableObject {
                     isConnected = true
                     lastError = nil
                     await refresh()
+                    restoreMasterState()     // 8i6
                     await refreshRouting()
                     syncAllChannelsToHardware()
-                    startPolling()
+                    if metersWanted { startPolling() }   // 8i6
                     break
                 } catch {
                     lastError = "\(error)"
@@ -329,8 +338,9 @@ final class ScarlettViewModel: ObservableObject {
                 // Set safe moderate gains for Guitar and DAW in Mix 1 (-14 dB)
                 _ = try? await asyncSet("matrix:0.0", "-14")
                 _ = try? await asyncSet("matrix:1.0", "-14")
-                _ = try? await asyncSet("matrix:0.6", "-14")
-                _ = try? await asyncSet("matrix:1.7", "-14")
+                // 8i6: DAW at 0 dB (unity)
+                _ = try? await asyncSet("matrix:0.6", "0")
+                _ = try? await asyncSet("matrix:1.7", "0")
                 routingPreset = "Mix 1 (DSP)"
 
             case "default":
@@ -351,9 +361,37 @@ final class ScarlettViewModel: ObservableObject {
 
     // MARK: - Master controls
 
+    // MARK: - 8i6: remembered Master
+    // The device (1st Gen) does not report its volume reliably, so the app
+    // remembers the last Master/Mute and re-applies it on connect.
+
+    private static let masterDBKey = "masterDB"
+    private static let masterMutedKey = "masterMuted"
+
+    func restoreMasterState() {
+        let d = UserDefaults.standard
+        var db: Int?
+        var muted = false
+        if d.object(forKey: Self.masterDBKey) != nil {
+            db = d.integer(forKey: Self.masterDBKey)
+            muted = d.bool(forKey: Self.masterMutedKey)
+        }
+        guard let db else { return }
+        setVolume(max(-128, min(0, db)))
+        setMute(muted)
+    }
+
+    /// Meters: paused while the window is closed (the app stays in the menu bar).
+    private var metersWanted = true
+    func setMetersActive(_ on: Bool) {
+        metersWanted = on
+        if on, isConnected { startPolling() } else { stopPolling() }
+    }
+
     func setVolume(_ dB: Int) {
         guard isConnected else { return }
         var s = state; s.masterVolume = Float(dB); state = s
+        UserDefaults.standard.set(dB, forKey: Self.masterDBKey)   // 8i6
         Task { @MainActor in
             do { try await asyncSet("volume", "\(dB)") }
             catch { fputs("setVolume error: \(error)\n", stderr) }
@@ -363,6 +401,7 @@ final class ScarlettViewModel: ObservableObject {
     func setMute(_ on: Bool) {
         guard isConnected else { return }
         var s = state; s.masterMute = on; state = s
+        UserDefaults.standard.set(on, forKey: Self.masterMutedKey)   // 8i6
         Task { @MainActor in
             do { try await asyncSet("mute", on ? "on" : "off") }
             catch { fputs("setMute error: \(error)\n", stderr) }
@@ -648,6 +687,7 @@ final class ScarlettViewModel: ObservableObject {
     // MARK: - Polling
 
     private func startPolling() {
+        guard pollTimer == nil else { return }   // 8i6: avoid duplicate timers
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in await self?.pollMeters() }
         }
@@ -799,7 +839,7 @@ final class ScarlettViewModel: ObservableObject {
             }
             s.masterVolume = preset.volume
             s.masterMute = preset.mute
-            if preset.activeMix >= 0 && preset.activeMix < 8 {
+            if preset.activeMix >= 0 && preset.activeMix < 3 {   // 8i6: 3 mix pairs
                 activeMix = preset.activeMix
             }
             state = s

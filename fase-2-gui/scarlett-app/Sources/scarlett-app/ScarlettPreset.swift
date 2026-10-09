@@ -1,7 +1,7 @@
 import Foundation
 
 /// Complete snapshot of every user-controllable value. Stored in UserDefaults
-/// (in-app preset list) and as `.6i6` JSON files via Export/Import.
+/// (in-app preset list) and as `.8i6` JSON files via Export/Import.
 struct ScarlettPreset: Codable, Identifiable, Hashable {
     let id: UUID
     var name: String

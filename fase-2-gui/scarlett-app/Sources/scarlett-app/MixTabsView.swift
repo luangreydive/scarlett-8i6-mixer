@@ -13,7 +13,7 @@ struct MixTabsView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    ForEach(0..<8, id: \.self) { i in
+                    ForEach(0..<3, id: \.self) { i in   // 8i6: 6 mixes = 3 pairs
                         let mixNum = i * 2 + 1
                         let isActive = vm.activeMix == i
                         Button {

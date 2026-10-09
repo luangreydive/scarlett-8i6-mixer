@@ -18,7 +18,7 @@ final class ScarlettClient: @unchecked Sendable {
     private let path: String
     private let queue = DispatchQueue(label: "com.scarlett.client", qos: .userInitiated)
 
-    init(path: String = "/tmp/scarlett-6i6.sock") {
+    init(path: String = "/tmp/scarlett-8i6.sock") {
         self.path = path
     }
 
@@ -28,6 +28,13 @@ final class ScarlettClient: @unchecked Sendable {
         guard fd >= 0 else { throw ScarlettError.notConnected }
 
         defer { close(fd) }
+
+        // 8i6: never wait forever if the daemon hangs (3 s max)
+        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)

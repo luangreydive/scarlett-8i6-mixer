@@ -3,8 +3,8 @@ import SwiftUI
 struct TopBarView: View {
     @EnvironmentObject var vm: ScarlettViewModel
     var onPresets: () -> Void
-    @State private var flashBusy = false
-    @State private var flashOK: Bool?
+    @LocalState private var flashBusy = false
+    @LocalState private var flashOK: Bool?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -19,7 +19,7 @@ struct TopBarView: View {
                     .foregroundStyle(ScarlettUI.textPrimary)
                     .tracking(1.5)
 
-                Text("6i6")
+                Text("8i6")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(ScarlettUI.scarlettRed)
 
@@ -84,22 +84,22 @@ struct TopBarView: View {
                 Task { @MainActor in
                     flashOK = await vm.saveToHardware()
                     flashBusy = false
-                    if flashOK == true {
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        flashOK = nil
-                    }
+                    // 8i6: show the result (ok or error) for a few seconds
+                    try? await Task.sleep(nanoseconds: flashOK == true ? 2_000_000_000 : 4_000_000_000)
+                    flashOK = nil
                 }
             } label: {
                 HStack(spacing: 4) {
                     if flashBusy {
                         ProgressView().controlSize(.small).scaleEffect(0.6)
                     } else {
-                        Image(systemName: flashOK == true ? "checkmark.circle.fill" : "memorychip")
+                        Image(systemName: flashOK == true ? "checkmark.circle.fill"
+                                          : (flashOK == false ? "xmark.octagon.fill" : "memorychip"))
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(flashOK == true ? ScarlettUI.emerald : ScarlettUI.scarlettRed)
                     }
 
-                    Text(flashOK == true ? "Saved" : "Save to Hardware")
+                    Text(flashOK == true ? "Saved" : (flashOK == false ? "Save failed" : "Save to Hardware"))
                         .font(ScarlettUI.title(10, .semibold))
                         .foregroundStyle(ScarlettUI.textPrimary)
                 }
@@ -110,7 +110,9 @@ struct TopBarView: View {
                         .fill(Color(red: 0.15, green: 0.16, blue: 0.19))
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
-                                .stroke(flashOK == true ? ScarlettUI.emerald.opacity(0.6) : Color.white.opacity(0.10), lineWidth: 0.8)
+                                .stroke(flashOK == true ? ScarlettUI.emerald.opacity(0.6)
+                                        : (flashOK == false ? ScarlettUI.scarlettRed.opacity(0.8) : Color.white.opacity(0.10)),
+                                        lineWidth: 0.8)
                         )
                 )
             }

@@ -1,97 +1,97 @@
-# Scarlett 6i6 Mixer for macOS
+# Scarlett 8i6 Mixer (macOS)
 
-A native macOS control panel for the **Focusrite Scarlett 6i6 (1st Gen)**, written in SwiftUI, with a small C daemon that talks to the hardware over USB.
+Native macOS control panel for the **Focusrite Scarlett 8i6 (1st Gen)**.
 
-## The problem
+This is a fork of [**scarlett-6i6-mixer**](https://github.com/Vumet3r/scarlett-6i6-mixer) by
+[@Vumet3r](https://github.com/Vumet3r) (built for the 6i6 1st Gen), adapted to the **8i6** and with a
+few new features. The SwiftUI app and the C daemon come from the original project.
 
-Focusrite's **Mix Control** (the only control app for 1st-gen Scarletts) was **dropped on macOS** — it stopped being maintained and doesn't work reliably on modern macOS versions. Focusrite's replacement (the web-based Focusrite Control 2) only supports 2nd Gen and later devices, so 1st-gen owners are left with a hardware mixer with no software to control it.
-
-This project reverse-engineers the 6i6 1st-gen USB control protocol on macOS and gives you back full offline control of your interface.
-
-![Scarlett 6i6 Mixer](docs/screenshot.png)
-
-## Download
-
-Grab the latest release from the [Releases page](https://github.com/Vumet3r/scarlett-6i6-mixer/releases) — `Scarlett-6i6-Mixer-v0.2.0-beta.zip`. No installers, no kernel drivers, no daemon setup: the app bundles everything it needs.
-
-1. Download and unzip
-2. **Right-click the app → Open** (required on first launch: the app is not Apple-notarized, so Gatekeeper will ask for confirmation) and click Open again
-3. Optionally drag it to your Applications folder
-
-Requirements: **macOS 14+** and a connected **Scarlett 6i6 (1st Gen)**.
+> **Why it exists:** Scarlett MixControl no longer works reliably on recent macOS versions,
+> and Focusrite Control 2 does not support 1st generation devices.
 
 ## Features
 
-- **Modern Studio UI** — dark graphite console aesthetics, realistic faders with grip ridges, calibrated 3-stage LED meters, and rotary pan knobs with radial arcs
-- **Stereo DAW playback** — unified DAW 1-2 channel with dual L/R peak meters, fader, and balance control
-- **Quick routing presets** — one-click setups for DAW / GarageBand (software monitoring), Direct Guitar (zero-latency DSP mix), Mix 1, and 1-to-1 default
-- **Matrix mixer / routing** — every input (analog, S/PDIF, ADAT) to every output, with accurate dB scaling
-- **Level meters** — 10 Hz polling with fast decay and click-to-reset peak hold
-- **Preamps** — gain (Lo/Hi, Line/Inst), 10kΩ pad, phantom power switching
-- **Clock & sample rate** — clock source (`Internal` / `S/PDIF` / `ADAT`) and 44.1–96 kHz rate selection, straight from the UI
-- **Presets** — JSON save/load/export/import, plus **write presets to the hardware's internal flash** (like Mix Control)
-- **Zero setup** — ships as a `.app` bundle with the daemon embedded; no kernel drivers, no kexts, no Mix Control needed
-- **Resilience & Safety** — feedback loop protection, daemon auto-respawns, watchdog recovers from USB resets, app auto-reconnects
-- **No notifications required** — the 1st-gen interrupt endpoint is not exposed on macOS, so the daemon polls the hardware instead
+From the original project:
+- Matrix mixer and routing, level meters, preamps, clock and sample rate.
+- Presets (save, load, export) and **Save to hardware** (stores the configuration in the device's
+  memory, so it survives unplugging it).
 
-## Architecture
+New in this fork:
+- **Scarlett 8i6 support** (see the differences below).
+- **Keyboard volume keys**: while the Scarlett is the macOS sound output, the volume up / down / mute
+  keys change the device **Master**, with an on-screen HUD (macOS cannot do this with 1st Gen
+  Scarletts). `Shift + Option` + key = fine steps.
+- **Menu bar mode**: closing the window keeps the app in the menu bar (the volume keys keep working).
+  From there: open the window, set the volume to maximum, **Launch at Login**, and quit.
+- Starts with the computer audio routed **straight to the monitors** (DAW mode).
+- Remembers the last Master / Mute and re-applies it on connect.
 
-```
-┌─────────────────────────┐         ┌──────────────────────────────────┐
-│  fase-2-gui/ (SwiftUI)  │  UNIX   │  fase-1-daemon/ (C, IOUSBHost)  │
-│  Scarlett 6i6 Mixer.app │ socket  │  scarlett-6i6d                  │
-│                         │◄───────►│  /tmp/scarlett-6i6.sock         │
-└─────────────────────────┘         └───────────────┬──────────────────┘
-                                                    │ USB vendor protocol
-                                                    ▼
-                                          Focusrite Scarlett 6i6 (1st Gen)
-```
+## Installation
 
-- `fase-1-daemon/` — C daemon (`src/main.c`, `src/usb-io.mm`): opens the device, decodes the 1st-gen register protocol (direct URBs with `wValue`/`wIndex`), serves a simple line-based socket API (`DUMP`, `SET mix`, `SET preamp`, `SET clock`, `SET rate`, `SET save`, …)
-- `fase-2-gui/scarlett-app/` — Swift package with the SwiftUI app: matrix view, preamps, meters, clock/rate pickers, presets panel
-- `fase-2-gui/package.sh` — assembles `dist/Scarlett 6i6 Mixer.app` with the daemon embedded in `Contents/Resources`
+### Download the app
 
-The daemon launches automatically from the app (`DaemonManager`), so you just open the app and the interface comes alive.
+Download the `.zip` from [Releases](https://github.com/luangreydive/scarlett-8i6-mixer/releases),
+unzip it and move **Scarlett 8i6 Mixer.app** to **Applications**.
 
-## Build & run
+The app is not notarized by Apple. The first time, macOS will say it cannot verify it: go to
+**System Settings › Privacy & Security**, scroll down to the "Scarlett 8i6 Mixer" notice and click
+**Open Anyway**. (Terminal alternative: `xattr -cr "/Applications/Scarlett 8i6 Mixer.app"`.)
 
-Requirements: macOS 14+, Xcode Command Line Tools.
+### Build from source
+
+You need the **Xcode Command Line Tools** (`xcode-select --install`); full Xcode is not required.
 
 ```bash
-# 1. Build the daemon
-cd fase-1-daemon && make
-
-# 2. Build the app (from repo root)
-cd fase-2-gui/scarlett-app && swift build
-
-# 3. Package the .app (includes daemon)
-cd fase-2-gui && ./package.sh
-
-# 4. Run
-open "dist/Scarlett 6i6 Mixer.app"
+git clone https://github.com/luangreydive/scarlett-8i6-mixer.git
+cd scarlett-8i6-mixer
+./setup_signing.sh   # optional, once (see below)
+./build_8i6.sh       # builds "Scarlett 8i6 Mixer.app" into this folder
 ```
 
-Or run the daemon standalone for headless control:
+`setup_signing.sh` creates a local certificate (in your login keychain only) so the app is always
+signed with the same identity. Without it, every rebuild changes the signature and macOS stops
+applying the Accessibility permission (the volume keys stop working until you grant it again).
 
-```bash
-fase-1-daemon/scarlett-6i6d &
-echo "DUMP" | socat - UNIX-CONNECT:/tmp/scarlett-6i6.sock
-```
+## Usage
 
-## Hardware support
+- **Accessibility permission**: requested on first launch; it is needed to intercept the volume keys.
+  It lives in System Settings › Privacy & Security › Accessibility.
+- **Full volume on the monitors**: the app starts in **DAW / GarageBand** mode (computer audio
+  straight to Monitor L/R). On the 8i6, **Mix 1** mode (through the internal mixer) leaves the
+  monitors silent.
+- **Brightness / external display apps** (MonitorControl, BetterDisplay, Lunar, etc.): if they also
+  intercept the volume keys, they take them (especially after the Mac wakes from sleep).
+  Configure them to use the keyboard for brightness only.
 
-- **Supported:** Focusrite Scarlett 6i6 **1st Gen** (verified on real hardware)
-- **Not supported:** 2nd Gen and newer (they use the FCP vendor protocol, not the 1st-gen register map), other Scarlett models, Clarett/Vocaster.
+## Differences from the 6i6 version
 
-## Credits & references
+Every change is marked with `8i6:` in the code.
 
-This project is a clean-room-ish macOS port that could not exist without the Linux audio community's work. It uses no code from them (except as reference), but the protocol knowledge was built from:
+| Change | Why |
+|---|---|
+| Product ID `0x8012` → `0x8002` | USB ID of the 8i6 |
+| Output volume in 1/256 dB (signed 16-bit), like the Linux driver | With `dB+128` the 8i6 does not lower the volume |
+| 3 mix pairs (A–F) instead of 8 | The 8i6 has 6 mixes |
+| Line/Inst on inputs 1–2, Pad on 3–4, no Lo/Hi switch | 8i6 controls according to `mixer_scarlett.c` |
+| On connect: monitors straight from the computer (PCM 1/2), Mix 1 not forced | Mix 1 leaves the monitors silent on the 8i6 |
+| DAW channel at 0 dB by default (was −12/−14 dB) | The original attenuated the computer by 12 dB |
+| `@State` replaced by `@LocalState` | Builds with the Command Line Tools only on the macOS 27 SDK |
+| Volume keys, menu bar mode, Launch at Login | New features |
+| 3 s timeout on the daemon socket; the menu does not redraw with the meters | Robustness |
+| Socket `/tmp/scarlett-8i6.sock` | Avoids clashing with a 6i6 install |
 
-- **[Linux ALSA Scarlett mixer driver](https://github.com/geoffreybennett/linux-scarlett)** (`sound/usb/mixer_scarlett.c`, GPL-2.0-or-later) — the 1st-gen register map (mix matrix, preamps, gain/DB scaling) used by the daemon
-- **[fcp](https://github.com/geoffreybennett/fcp) — Geoffrey D. Bennett's Focusrite Control Protocol kernel driver** (GPL-2.0) — the FCP vendor protocol used by 2nd Gen+; documented for a possible future extension (the 6i6 1st Gen uses plain register URBs instead)
-- **[alsa-scarlett-gui](https://github.com/Kemuri/alsa-scarlett-gui)** by Kemuri — Linux control panel; UI layout and meter behaviour informed ours
-- **[scarlett-mixcontrol-1stgen](https://github.com/Nas3nmann/scarlett-mixcontrol-1stgen)** — Focusrite's community-edition Mix Control for 1st Gen, used as reference for preset format and reconnect behaviour
+## Known limitations
 
-## License
+- Tested on a single 8i6 (1st Gen) with macOS 27 (Apple Silicon).
+- This device **does not reliably report** its routing, mixes or volumes: the app shows the last
+  values it wrote, not values read back from the hardware.
+- If it cannot claim the device, the daemon restarts the macOS MIDI service (`MIDIServer`).
 
-GPL-2.0 — the daemon derives from GPL-2.0 protocol documentation and register maps from the ALSA ecosystem; the whole repository is released under the same license.
+## Credits and license
+
+- Original project: [scarlett-6i6-mixer](https://github.com/Vumet3r/scarlett-6i6-mixer) by
+  [@Vumet3r](https://github.com/Vumet3r).
+- Register map and gain scaling: the Linux ALSA driver (`sound/usb/mixer_scarlett.c`).
+- Licensed under **GPL-2.0** (see [LICENSE](LICENSE)), same as the original.
+
+Not affiliated with or endorsed by Focusrite.
